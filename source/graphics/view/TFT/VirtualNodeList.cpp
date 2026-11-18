@@ -273,7 +273,7 @@ void VirtualNodeList::createRowPool()
 
         row.lblLong = lv_label_create(row.panel);
         lv_obj_set_pos(row.lblLong, -5, 35);
-        lv_obj_set_size(row.lblLong, lv_pct(80), LV_SIZE_CONTENT);
+        lv_obj_set_size(row.lblLong, lv_pct(88), LV_SIZE_CONTENT);
         lv_label_set_long_mode(row.lblLong, LV_LABEL_LONG_SCROLL);
         lv_obj_set_style_align(row.lblLong, LV_ALIGN_TOP_LEFT, LV_PART_MAIN);
 
