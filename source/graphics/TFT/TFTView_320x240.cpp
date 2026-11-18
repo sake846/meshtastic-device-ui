@@ -62,76 +62,59 @@ extern void pagerSetActiveMenuButton(lv_obj_t *button);
 #include <time.h>
 
 #if defined(HAS_QZSS_DCR)
-static lv_obj_t *muiM10StatusBadge = nullptr;
-static lv_obj_t *muiQzssSignalLabel = nullptr;
+static lv_obj_t *muiM10QzssLabel = nullptr;
+static lv_obj_t *muiDcrStatusLabel = nullptr;
 
 static void muiRefreshQzssStatus()
 {
-    if (!muiM10StatusBadge || !muiQzssSignalLabel)
+    if (!muiM10QzssLabel || !muiDcrStatusLabel)
         return;
 
-    const bool detected = QzssDcr::isUbloxM10Detected();
-    const bool enabled = QzssDcr::isEnabled();
-    uint8_t capturedSvId = 0;
-    const bool captured = enabled && QzssDcr::getCapturedSatellite(capturedSvId);
+    if (!QzssDcr::isUbloxM10Detected()) {
+        lv_label_set_text(muiM10QzssLabel, "#808080 M10:NONE QZSS:--#");
+        lv_label_set_text(muiDcrStatusLabel, "#808080 DCR:--#");
+    } else {
+        const bool enabled = QzssDcr::isEnabled();
+        QzssDcr::SatelliteStatus satellites[QzssDcr::MAX_QZSS_SATELLITES] = {};
+        uint8_t satelliteCount = 0;
+        const bool hasReport = enabled && QzssDcr::getSatelliteStatus(satellites, satelliteCount);
 
-    if (!detected)
-        lv_label_set_text(muiM10StatusBadge, "NO M10");
-    else if (!enabled)
-        lv_label_set_text(muiM10StatusBadge, "M10 L1S OFF");
-    else if (captured)
-        lv_label_set_text_fmt(muiM10StatusBadge, "M10 Q%u", capturedSvId);
-    else
-        lv_label_set_text(muiM10StatusBadge, "M10 SEARCH");
-
-    lv_obj_set_style_text_color(muiM10StatusBadge,
-                                lv_color_hex(!detected || (enabled && !captured) ? 0xFFAB00 :
-                                             enabled ? 0x00C853 : 0x808080),
-                                LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    QzssDcr::SatelliteStatus satellites[QzssDcr::MAX_QZSS_SATELLITES] = {};
-    uint8_t satelliteCount = 0;
-    const bool hasReport = detected && enabled && QzssDcr::getSatelliteStatus(satellites, satelliteCount);
-    char status[64] = {};
-    if (!detected)
-        std::snprintf(status, sizeof(status), "QZSS NO M10");
-    else if (!enabled)
-        std::snprintf(status, sizeof(status), "QZSS OFF");
-    else if (!hasReport)
-        std::snprintf(status, sizeof(status), "QZSS WAIT");
-    else if (satelliteCount == 0)
-        std::snprintf(status, sizeof(status), "QZSS NONE");
-    else {
-        bool selected[QzssDcr::MAX_QZSS_SATELLITES] = {};
-        size_t position = 0;
-        for (uint8_t shown = 0; shown < 3 && shown < satelliteCount; ++shown) {
-            int strongest = -1;
-            for (uint8_t i = 0; i < satelliteCount; ++i) {
-                if (!selected[i] && (strongest < 0 || satellites[i].cno > satellites[strongest].cno))
-                    strongest = i;
+        const char *qzssColor = "808080";
+        char qzssStatus[16] = "QZSS:--";
+        if (enabled) {
+            if (!hasReport) {
+                qzssColor = "FFAB00";
+                std::snprintf(qzssStatus, sizeof(qzssStatus), "QZSS:WAIT");
+            } else if (satelliteCount == 0) {
+                qzssColor = "FFAB00";
+                std::snprintf(qzssStatus, sizeof(qzssStatus), "QZSS:0");
+            } else {
+                qzssColor = "00C853";
+                std::snprintf(qzssStatus, sizeof(qzssStatus), "QZSS:%u", static_cast<unsigned>(satelliteCount));
             }
-            if (strongest < 0)
-                break;
-            const int written = std::snprintf(status + position, sizeof(status) - position, "%sQ%u:%u",
-                                               position == 0 ? "QZSS C/N0 " : " ", satellites[strongest].svId,
-                                               satellites[strongest].cno);
-            if (written < 0 || static_cast<size_t>(written) >= sizeof(status) - position)
-                break;
-            position += static_cast<size_t>(written);
-            selected[strongest] = true;
+        }
+
+        char firstLine[48];
+        std::snprintf(firstLine, sizeof(firstLine), "#00C853 M10:OK# #%s %s#", qzssColor, qzssStatus);
+        lv_label_set_text(muiM10QzssLabel, firstLine);
+
+        if (!enabled) {
+            lv_label_set_text(muiDcrStatusLabel, "#808080 DCR:OFF#");
+        } else {
+            uint8_t capturedSvId = 0;
+            uint8_t ageSeconds = 0;
+            if (QzssDcr::getCapturedSatellite(capturedSvId, &ageSeconds))
+                lv_label_set_text_fmt(muiDcrStatusLabel, "#00C853 DCR:RX Q%u %02us#", static_cast<unsigned>(capturedSvId),
+                                      static_cast<unsigned>(ageSeconds));
+            else
+                lv_label_set_text(muiDcrStatusLabel, "#FFAB00 DCR:WAIT#");
         }
     }
-    lv_label_set_text(muiQzssSignalLabel, status);
-    lv_obj_set_style_text_color(muiQzssSignalLabel,
-                                lv_color_hex(hasReport && satelliteCount ? 0x00C853 :
-                                             hasReport ? 0xFFAB00 : 0x808080),
-                                LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    lv_obj_align_to(muiM10StatusBadge, objects.home_location_label, LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_obj_align_to(muiQzssSignalLabel, muiM10StatusBadge, LV_ALIGN_TOP_RIGHT, 0,
-                    lv_obj_get_height(muiM10StatusBadge) + 2);
-    lv_obj_move_foreground(muiM10StatusBadge);
-    lv_obj_move_foreground(muiQzssSignalLabel);
+    lv_obj_align_to(muiM10QzssLabel, objects.home_location_label, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_align_to(muiDcrStatusLabel, muiM10QzssLabel, LV_ALIGN_TOP_RIGHT, 0, lv_obj_get_height(muiM10QzssLabel) + 2);
+    lv_obj_move_foreground(muiM10QzssLabel);
+    lv_obj_move_foreground(muiDcrStatusLabel);
 }
 
 static void muiQzssStatusTimer(lv_timer_t *)
@@ -1758,20 +1741,22 @@ void TFTView_320x240::ui_events_init(void)
     lv_obj_add_event_cb(objects.home_location_button, this->ui_event_LocationButton, LV_EVENT_LONG_PRESSED, NULL);
 #if defined(HAS_QZSS_DCR)
     lv_obj_add_event_cb(objects.home_location_button, this->ui_event_LocationButton, LV_EVENT_SHORT_CLICKED, NULL);
-    muiM10StatusBadge = lv_label_create(lv_obj_get_parent(objects.home_location_label));
-    lv_obj_add_flag(muiM10StatusBadge, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_set_style_text_font(muiM10StatusBadge, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(muiM10StatusBadge, lv_color_hex(0x202020), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(muiM10StatusBadge, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(muiM10StatusBadge, 3, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_all(muiM10StatusBadge, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    muiQzssSignalLabel = lv_label_create(lv_obj_get_parent(objects.home_location_label));
-    lv_obj_add_flag(muiQzssSignalLabel, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_set_style_text_font(muiQzssSignalLabel, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(muiQzssSignalLabel, lv_color_hex(0x202020), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(muiQzssSignalLabel, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(muiQzssSignalLabel, 3, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_all(muiQzssSignalLabel, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    muiM10QzssLabel = lv_label_create(lv_obj_get_parent(objects.home_location_label));
+    lv_obj_add_flag(muiM10QzssLabel, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_set_style_text_font(muiM10QzssLabel, &ui_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(muiM10QzssLabel, lv_color_hex(0x202020), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(muiM10QzssLabel, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(muiM10QzssLabel, 3, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(muiM10QzssLabel, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    muiDcrStatusLabel = lv_label_create(lv_obj_get_parent(objects.home_location_label));
+    lv_obj_add_flag(muiDcrStatusLabel, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_set_style_text_font(muiDcrStatusLabel, &ui_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(muiDcrStatusLabel, lv_color_hex(0x202020), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(muiDcrStatusLabel, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(muiDcrStatusLabel, 3, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(muiDcrStatusLabel, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_label_set_recolor(muiM10QzssLabel, true);
+    lv_label_set_recolor(muiDcrStatusLabel, true);
 #endif
     lv_obj_add_event_cb(objects.home_wlan_button, this->ui_event_WLANButton, LV_EVENT_LONG_PRESSED, NULL);
     lv_obj_add_event_cb(objects.home_mqtt_button, this->ui_event_MQTTButton, LV_EVENT_ALL, NULL);
