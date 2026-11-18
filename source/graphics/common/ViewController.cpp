@@ -3,7 +3,9 @@
 #include "graphics/common/MeshtasticView.h"
 #include "util/ILog.h"
 #include "util/LogMessage.h"
+#if __has_include("UptimeClock.h")
 #include "UptimeClock.h"
+#endif
 #include <algorithm>
 #include <utility>
 
@@ -982,6 +984,7 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
     }
     uint32_t receivedAt = p.rx_time;
     if (!p.has_rx_time) {
+#if __has_include("UptimeClock.h")
         const uint32_t nowUptime = Time::getUptimeSecs();
         time_t now;
         time(&now);
@@ -989,6 +992,9 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
             receivedAt = 0;
         else
             receivedAt = (uint32_t)(now - (nowUptime - receivedAt));
+#else
+        receivedAt = 0;
+#endif
     }
     view->updateLastHeard(p.from, receivedAt);
 
