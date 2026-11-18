@@ -1,6 +1,12 @@
 #if HAS_TFT && defined(VIEW_320x240) || defined(VIEW_240x320)
 
 #include "graphics/view/TFT/TFTView_320x240.h"
+#if __has_include("configuration.h")
+#include "configuration.h"
+#endif
+#if defined(HAS_QZSS_DCR)
+#include "gps/QzssDcr.h"
+#endif
 #include "Arduino.h"
 #include "graphics/common/BatteryLevel.h"
 #include "graphics/common/LoRaPresets.h"
@@ -54,6 +60,85 @@ extern void pagerSetActiveMenuButton(lv_obj_t *button);
 #include <random>
 #include <sstream>
 #include <time.h>
+
+#if defined(HAS_QZSS_DCR)
+static lv_obj_t *muiM10StatusBadge = nullptr;
+static lv_obj_t *muiQzssSignalLabel = nullptr;
+
+static void muiRefreshQzssStatus()
+{
+    if (!muiM10StatusBadge || !muiQzssSignalLabel)
+        return;
+
+    const bool detected = QzssDcr::isUbloxM10Detected();
+    const bool enabled = QzssDcr::isEnabled();
+    uint8_t capturedSvId = 0;
+    const bool captured = enabled && QzssDcr::getCapturedSatellite(capturedSvId);
+
+    if (!detected)
+        lv_label_set_text(muiM10StatusBadge, "NO M10");
+    else if (!enabled)
+        lv_label_set_text(muiM10StatusBadge, "M10 L1S OFF");
+    else if (captured)
+        lv_label_set_text_fmt(muiM10StatusBadge, "M10 Q%u", capturedSvId);
+    else
+        lv_label_set_text(muiM10StatusBadge, "M10 SEARCH");
+
+    lv_obj_set_style_text_color(muiM10StatusBadge,
+                                lv_color_hex(!detected || (enabled && !captured) ? 0xFFAB00 :
+                                             enabled ? 0x00C853 : 0x808080),
+                                LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    QzssDcr::SatelliteStatus satellites[QzssDcr::MAX_QZSS_SATELLITES] = {};
+    uint8_t satelliteCount = 0;
+    const bool hasReport = detected && enabled && QzssDcr::getSatelliteStatus(satellites, satelliteCount);
+    char status[64] = {};
+    if (!detected)
+        std::snprintf(status, sizeof(status), "QZSS NO M10");
+    else if (!enabled)
+        std::snprintf(status, sizeof(status), "QZSS OFF");
+    else if (!hasReport)
+        std::snprintf(status, sizeof(status), "QZSS WAIT");
+    else if (satelliteCount == 0)
+        std::snprintf(status, sizeof(status), "QZSS NONE");
+    else {
+        bool selected[QzssDcr::MAX_QZSS_SATELLITES] = {};
+        size_t position = 0;
+        for (uint8_t shown = 0; shown < 3 && shown < satelliteCount; ++shown) {
+            int strongest = -1;
+            for (uint8_t i = 0; i < satelliteCount; ++i) {
+                if (!selected[i] && (strongest < 0 || satellites[i].cno > satellites[strongest].cno))
+                    strongest = i;
+            }
+            if (strongest < 0)
+                break;
+            const int written = std::snprintf(status + position, sizeof(status) - position, "%sQ%u:%u",
+                                               position == 0 ? "QZSS C/N0 " : " ", satellites[strongest].svId,
+                                               satellites[strongest].cno);
+            if (written < 0 || static_cast<size_t>(written) >= sizeof(status) - position)
+                break;
+            position += static_cast<size_t>(written);
+            selected[strongest] = true;
+        }
+    }
+    lv_label_set_text(muiQzssSignalLabel, status);
+    lv_obj_set_style_text_color(muiQzssSignalLabel,
+                                lv_color_hex(hasReport && satelliteCount ? 0x00C853 :
+                                             hasReport ? 0xFFAB00 : 0x808080),
+                                LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_align_to(muiM10StatusBadge, objects.home_location_label, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_align_to(muiQzssSignalLabel, muiM10StatusBadge, LV_ALIGN_TOP_RIGHT, 0,
+                    lv_obj_get_height(muiM10StatusBadge) + 2);
+    lv_obj_move_foreground(muiM10StatusBadge);
+    lv_obj_move_foreground(muiQzssSignalLabel);
+}
+
+static void muiQzssStatusTimer(lv_timer_t *)
+{
+    muiRefreshQzssStatus();
+}
+#endif
 
 #if defined(_WIN32)
 static const char *strcasestr(const char *haystack, const char *needle)
@@ -804,6 +889,9 @@ void TFTView_320x240::init_screens(void)
     screensInitialised = true;
     state = MeshtasticView::eInitDone;
     ILOG_DEBUG("TFTView_320x240 init done.");
+#if defined(HAS_QZSS_DCR)
+    lv_timer_create(muiQzssStatusTimer, 1000, nullptr);
+#endif
 }
 
 /**
@@ -1668,6 +1756,23 @@ void TFTView_320x240::ui_events_init(void)
     lv_obj_add_event_cb(objects.home_lora_button, this->ui_event_LoRaButton, LV_EVENT_LONG_PRESSED, NULL);
     lv_obj_add_event_cb(objects.home_bell_button, this->ui_event_BellButton, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(objects.home_location_button, this->ui_event_LocationButton, LV_EVENT_LONG_PRESSED, NULL);
+#if defined(HAS_QZSS_DCR)
+    lv_obj_add_event_cb(objects.home_location_button, this->ui_event_LocationButton, LV_EVENT_SHORT_CLICKED, NULL);
+    muiM10StatusBadge = lv_label_create(lv_obj_get_parent(objects.home_location_label));
+    lv_obj_add_flag(muiM10StatusBadge, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_set_style_text_font(muiM10StatusBadge, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(muiM10StatusBadge, lv_color_hex(0x202020), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(muiM10StatusBadge, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(muiM10StatusBadge, 3, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(muiM10StatusBadge, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    muiQzssSignalLabel = lv_label_create(lv_obj_get_parent(objects.home_location_label));
+    lv_obj_add_flag(muiQzssSignalLabel, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_set_style_text_font(muiQzssSignalLabel, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(muiQzssSignalLabel, lv_color_hex(0x202020), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(muiQzssSignalLabel, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(muiQzssSignalLabel, 3, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(muiQzssSignalLabel, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+#endif
     lv_obj_add_event_cb(objects.home_wlan_button, this->ui_event_WLANButton, LV_EVENT_LONG_PRESSED, NULL);
     lv_obj_add_event_cb(objects.home_mqtt_button, this->ui_event_MQTTButton, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(objects.home_transfer_button, this->ui_event_home_transfer_button, LV_EVENT_LONG_PRESSED, NULL);
@@ -2738,6 +2843,13 @@ void TFTView_320x240::ui_event_BellButton(lv_event_t *e)
 void TFTView_320x240::ui_event_LocationButton(lv_event_t *e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
+#if defined(HAS_QZSS_DCR)
+    if (event_code == LV_EVENT_SHORT_CLICKED && THIS->configComplete && THIS->activeSettings == eNone) {
+        QzssDcr::setReceptionEnabled(!QzssDcr::isEnabled());
+        muiRefreshQzssStatus();
+        return;
+    }
+#endif
     if (event_code == LV_EVENT_PRESSED && THIS->configComplete) {
         // TODO: figure out if there is a way to enabled GPS without a reboot (ala triple-click)
         // over phone api and switch between enabled/disabled with short press
