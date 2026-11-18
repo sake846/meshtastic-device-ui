@@ -293,11 +293,13 @@ bool pagerHandleBack(lv_indev_t *indev)
         }
     }
 
-    if (screen != objects.main_screen || !pagerMenuButtonAvailable(pagerActiveMenuButton) ||
-        pagerMenuButtonIndex(focused) >= 0)
+    if (screen != objects.main_screen)
+        return false;
+    lv_obj_t *target = pagerMenuButtonAvailable(pagerActiveMenuButton) ? pagerActiveMenuButton : objects.home_button;
+    if (!pagerMenuButtonAvailable(target))
         return false;
     lv_group_set_editing(group, false);
-    lv_group_focus_obj(pagerActiveMenuButton);
+    lv_group_focus_obj(target);
     return true;
 }
 
