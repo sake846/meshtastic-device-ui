@@ -293,14 +293,8 @@ bool pagerHandleBack(lv_indev_t *indev)
         }
     }
 
-    if (screen != objects.main_screen)
-        return false;
-    lv_obj_t *target = pagerMenuButtonAvailable(pagerActiveMenuButton) ? pagerActiveMenuButton : objects.home_button;
-    if (!pagerMenuButtonAvailable(target))
-        return false;
-    lv_group_set_editing(group, false);
-    lv_group_focus_obj(target);
-    return true;
+    // Let the screen handler restore the menu group and clear panel overlays.
+    return false;
 }
 
 static bool pagerMoveFocus(lv_group_t *group, int16_t diff)
