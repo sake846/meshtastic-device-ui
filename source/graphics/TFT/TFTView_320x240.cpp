@@ -2149,7 +2149,7 @@ void TFTView_320x240::ui_event_ScreenKey(lv_event_t *e)
             return;
         }
 
-        if (c == LV_KEY_ESC) {
+        if (c == LV_KEY_ESC || c == LV_KEY_BACKSPACE) {
             // leave reboot screen
             if (THIS->activeSettings == eReboot) {
                 lv_obj_send_event(objects.cancel_reboot_button, LV_EVENT_CLICKED, nullptr);
@@ -2170,9 +2170,8 @@ void TFTView_320x240::ui_event_ScreenKey(lv_event_t *e)
             return;
         }
 
-        // Handle ESC/LEFT to return to main menu from any right panel.
-        // TODO: Check for devices that have only a backspace key
-        if (c == LV_KEY_ESC || c == LV_KEY_LEFT) {
+        // Handle ESC/LEFT/BACKSPACE to return to main menu from any right panel.
+        if (c == LV_KEY_ESC || c == LV_KEY_LEFT || c == LV_KEY_BACKSPACE) {
             // Clean up any overlays (keyboard, QR code, popups, settings dialogs) before returning to menu
             THIS->cleanupAllOverlays();
             THIS->setInputGroup(groups.mainButtons);
