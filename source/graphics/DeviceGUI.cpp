@@ -277,8 +277,8 @@ bool pagerHandleBack(lv_indev_t *indev)
         objects.obj8__cancel_button_w, objects.obj9__cancel_button_w, objects.obj10__cancel_button_w,
         objects.obj11__cancel_button_w, objects.obj12__cancel_button_w, objects.obj13__cancel_button_w,
         objects.obj14__cancel_button_w, objects.obj15__cancel_button_w, objects.obj16__cancel_button_w,
-        objects.obj17__cancel_button_w, objects.obj18__cancel_button_w, objects.obj21__cancel_button_w,
-        objects.obj27__cancel_button_w,
+        objects.obj17__cancel_button_w, objects.obj18__cancel_button_w, objects.obj19__cancel_button_w,
+        objects.obj22__cancel_button_w, objects.obj28__cancel_button_w,
     };
     for (lv_obj_t *parent = focused; parent && parent != screen; parent = lv_obj_get_parent(parent)) {
         for (lv_obj_t *button : cancelButtons) {
