@@ -33,6 +33,9 @@
 #include "storage/MapStorage.h"
 #include "styles.h"
 #include "ui.h"
+#if defined(INPUTDRIVER_ROTARY_TYPE)
+extern void pagerSetActiveMenuButton(lv_obj_t *button);
+#endif
 #include "util/About.h"
 #include "util/FileLoader.h"
 #include "util/ILog.h"
@@ -410,6 +413,9 @@ void TFTView_320x240::init(IClientBase *client)
     MeshtasticView::init(client);
 
     ui_init_boot();
+    const uint32_t screenWidth = lv_display_get_horizontal_resolution(displaydriver->getDisplay());
+    const uint32_t screenHeight = lv_display_get_vertical_resolution(displaydriver->getDisplay());
+    lv_obj_set_size(objects.boot_screen, screenWidth, screenHeight);
     FileLoader::init(&fileSystem);
     if (!FileLoader::loadBootImage(objects.boot_logo))
         lv_image_set_src(objects.boot_logo, &img_meshtastic_boot_logo_image);
@@ -703,6 +709,14 @@ void TFTView_320x240::init_screens(void)
     state = MeshtasticView::eInitScreens;
     ui_init();
     apply_hotfix();
+    const uint32_t screenWidth = lv_display_get_horizontal_resolution(displaydriver->getDisplay());
+    const uint32_t screenHeight = lv_display_get_vertical_resolution(displaydriver->getDisplay());
+    lv_obj_t *displayScreens[] = {objects.main_screen, objects.boot_screen, objects.blank_screen,
+                                  objects.lock_screen, objects.calibration_screen};
+    for (lv_obj_t *screen : displayScreens) {
+        if (screen)
+            lv_obj_set_size(screen, screenWidth, screenHeight);
+    }
 
     activeMsgContainer = objects.messages_container;
     // setup the two channel label panels with arrays that allow indexing
@@ -1025,6 +1039,9 @@ void TFTView_320x240::showActivePanel(lv_obj_t *b, lv_obj_t *p, lv_obj_t *tp)
     }
 
     activeButton = b;
+#if defined(INPUTDRIVER_ROTARY_TYPE)
+    pagerSetActiveMenuButton(b);
+#endif
     activePanel = p;
     lastMainButton = b; // Track which main button was selected for ESC return
     input_policy::InputContextState::instance().setActivePanelId((uint32_t)(uintptr_t)activePanel);
@@ -1105,8 +1122,21 @@ void TFTView_320x240::enterProgrammingMode(void)
         // the label may be hidden by a full-screen custom boot logo
         lv_obj_remove_flag(objects.firmware_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(objects.bluetooth_button, LV_OBJ_FLAG_HIDDEN);
-        lv_group_add_obj(lv_group_get_default(), objects.bluetooth_button);
-        lv_group_focus_obj(objects.bluetooth_button);
+        if (lv_group_t *group = lv_group_get_default()) {
+            lv_group_add_obj(group, objects.bluetooth_button);
+            lv_group_focus_obj(objects.bluetooth_button);
+        }
+#if defined(INPUTDRIVER_ROTARY_TYPE)
+        const lv_style_selector_t pagerBluetoothSelectors[] = {
+            (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_DEFAULT,
+            (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_FOCUSED,
+            (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_FOCUS_KEY,
+            (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_PRESSED};
+        for (lv_style_selector_t selector : pagerBluetoothSelectors) {
+            lv_obj_set_style_outline_width(objects.bluetooth_button, 0, selector);
+            lv_obj_set_style_border_width(objects.bluetooth_button, 0, selector);
+        }
+#endif
         lv_obj_add_event_cb(objects.bluetooth_button, ui_event_BluetoothButton, LV_EVENT_LONG_PRESSED, NULL);
         ILOG_INFO("### MUI programming mode entered (nodeId=!%08x) ###", ownNode);
     }
@@ -1116,8 +1146,169 @@ void TFTView_320x240::enterProgrammingMode(void)
  * @brief fix quirks in the generated ui
  *
  */
+#if defined(INPUTDRIVER_ROTARY_TYPE)
+static void pagerNodeFocusEvent(lv_event_t *e)
+{
+    lv_obj_t *row = lv_obj_get_parent(lv_event_get_target_obj(e));
+    if (!row)
+        return;
+    if (lv_event_get_code(e) == LV_EVENT_FOCUSED)
+        lv_obj_add_state(row, LV_STATE_FOCUS_KEY);
+    else
+        lv_obj_remove_state(row, LV_STATE_FOCUS_KEY);
+}
+
+static void pagerApplyInsetFocus(lv_obj_t *obj)
+{
+    if (!obj)
+        return;
+    if (obj == objects.boot_logo_button) {
+        const lv_style_selector_t focus = (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_FOCUS_KEY;
+        lv_obj_set_style_outline_width(obj, 0, focus);
+        lv_obj_set_style_border_width(obj, 0, focus);
+    } else if (obj == objects.bluetooth_button) {
+        const lv_style_selector_t markSelectors[] = {
+            (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_DEFAULT,
+            (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_FOCUSED,
+            (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_FOCUS_KEY,
+            (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_PRESSED};
+        for (lv_style_selector_t selector : markSelectors) {
+            lv_obj_set_style_outline_width(obj, 0, selector);
+            lv_obj_set_style_border_width(obj, 0, selector);
+        }
+    } else if (lv_obj_check_type(obj, &lv_buttonmatrix_class)) {
+        const lv_style_selector_t focus = (lv_style_selector_t)LV_PART_ITEMS | (lv_style_selector_t)LV_STATE_FOCUS_KEY;
+        lv_obj_set_style_outline_width(obj, 0, focus);
+        lv_obj_set_style_border_width(obj, 2, focus);
+        lv_obj_set_style_border_color(obj, lv_color_hex(0xaafbff), focus);
+    } else if (lv_obj_check_type(obj, &lv_button_class) && lv_obj_get_parent(obj) &&
+               lv_obj_get_parent(lv_obj_get_parent(obj)) == objects.nodes_panel) {
+        const lv_style_selector_t focus = (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_FOCUS_KEY;
+        const lv_style_selector_t pressed = (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_PRESSED;
+        lv_obj_t *row = lv_obj_get_parent(obj);
+        lv_obj_set_style_border_width(obj, 0, focus);
+        lv_obj_set_style_outline_width(obj, 0, focus);
+        lv_obj_set_style_border_width(row, 2, focus);
+        lv_obj_set_style_border_color(row, lv_color_hex(0xaafbff), focus);
+        lv_obj_add_event_cb(obj, pagerNodeFocusEvent, LV_EVENT_FOCUSED, nullptr);
+        lv_obj_add_event_cb(obj, pagerNodeFocusEvent, LV_EVENT_DEFOCUSED, nullptr);
+        lv_obj_set_style_transform_width(obj, 0, pressed);
+        lv_obj_set_style_transform_height(obj, 0, pressed);
+    } else if (lv_obj_check_type(obj, &lv_button_class) || lv_obj_check_type(obj, &lv_imagebutton_class) ||
+               lv_obj_check_type(obj, &lv_textarea_class) || lv_obj_check_type(obj, &lv_dropdown_class) ||
+               lv_obj_check_type(obj, &lv_switch_class) || lv_obj_check_type(obj, &lv_checkbox_class)) {
+        const lv_style_selector_t focus = (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_FOCUS_KEY;
+        lv_obj_set_style_outline_width(obj, 0, focus);
+        lv_obj_set_style_border_width(obj, 2, focus);
+        lv_obj_set_style_border_color(obj, lv_color_hex(0xaafbff), focus);
+    } else if (lv_obj_check_type(obj, &lv_slider_class)) {
+        const lv_style_selector_t focus = (lv_style_selector_t)LV_PART_MAIN | (lv_style_selector_t)LV_STATE_FOCUS_KEY;
+        const lv_style_selector_t knobFocus = (lv_style_selector_t)LV_PART_KNOB | (lv_style_selector_t)LV_STATE_FOCUS_KEY;
+        lv_obj_set_style_outline_width(obj, 0, focus);
+        lv_obj_set_style_border_width(obj, 2, knobFocus);
+        lv_obj_set_style_border_color(obj, lv_color_hex(0xaafbff), knobFocus);
+    }
+}
+
+static void pagerScrollPanelKey(lv_event_t *e)
+{
+    const void *param = lv_event_get_param(e);
+    lv_obj_t *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    if (!param || !target || lv_obj_check_type(target, &lv_textarea_class))
+        return;
+
+    const uint32_t key = *static_cast<const uint32_t *>(param);
+    lv_obj_t *panel = target;
+    while (panel && panel != objects.settings_about_panel && panel != objects.tools_statistics_panel &&
+           panel != objects.tools_packet_log_panel)
+        panel = lv_obj_get_parent(panel);
+    if (!panel)
+        return;
+
+    if (key == LV_KEY_DOWN)
+        lv_obj_scroll_by_bounded(panel, 0, -80, LV_ANIM_ON);
+    else if (key == LV_KEY_UP)
+        lv_obj_scroll_by_bounded(panel, 0, 80, LV_ANIM_ON);
+    else if (key == LV_KEY_ESC || key == LV_KEY_LEFT)
+        lv_group_focus_obj(objects.settings_button);
+    else
+        return;
+    lv_event_stop_processing(e);
+}
+
+static lv_obj_tree_walk_res_t pagerApplyInsetFocusWalk(lv_obj_t *obj, void *)
+{
+    pagerApplyInsetFocus(obj);
+    if (obj)
+        lv_obj_add_event_cb(obj, pagerScrollPanelKey, LV_EVENT_KEY, nullptr);
+    return LV_OBJ_TREE_WALK_NEXT;
+}
+
+static void pagerApplyInsetFocusChildCreated(lv_event_t *e)
+{
+    lv_obj_t *obj = static_cast<lv_obj_t *>(lv_event_get_param(e));
+    pagerApplyInsetFocus(obj);
+    if (obj)
+        lv_obj_add_event_cb(obj, pagerScrollPanelKey, LV_EVENT_KEY, nullptr);
+}
+
+static lv_obj_tree_walk_res_t pagerApplyScrollOnFocusWalk(lv_obj_t *obj, void *data)
+{
+    lv_group_t *group = static_cast<lv_group_t *>(data);
+    if (obj && group && lv_obj_get_group(obj) == group)
+        lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    return LV_OBJ_TREE_WALK_NEXT;
+}
+
+static void pagerApplyScrollOnFocus(lv_obj_t *panel)
+{
+    lv_group_t *group = lv_group_get_default();
+    if (panel && group)
+        lv_obj_tree_walk(panel, pagerApplyScrollOnFocusWalk, group);
+}
+
+#endif
+
 void TFTView_320x240::apply_hotfix(void)
 {
+#if defined(INPUTDRIVER_ROTARY_TYPE)
+    lv_obj_set_style_flex_flow(objects.home_container, LV_FLEX_FLOW_ROW_WRAP, LV_PART_MAIN | LV_STATE_FOCUSED);
+    lv_obj_set_style_flex_cross_place(objects.home_container, LV_FLEX_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_FOCUSED);
+    lv_obj_t *pagerFocusScreens[] = {objects.main_screen, objects.boot_screen, objects.blank_screen,
+                                      objects.lock_screen, objects.calibration_screen};
+    for (lv_obj_t *screen : pagerFocusScreens) {
+        if (screen) {
+            lv_obj_tree_walk(screen, pagerApplyInsetFocusWalk, nullptr);
+            lv_obj_add_event_cb(screen, pagerApplyInsetFocusChildCreated, LV_EVENT_CHILD_CREATED, nullptr);
+        }
+    }
+    lv_obj_remove_state(objects.boot_logo_button, LV_STATE_FOCUSED);
+    lv_obj_remove_state(objects.boot_logo_button, LV_STATE_FOCUS_KEY);
+    lv_obj_remove_state(objects.boot_logo_button, LV_STATE_PRESSED);
+    pagerApplyScrollOnFocus(objects.home_container);
+    pagerApplyScrollOnFocus(objects.groups_panel);
+    pagerApplyScrollOnFocus(objects.settings_channel_panel);
+    pagerApplyScrollOnFocus(objects.tab_page_basic_settings);
+    pagerApplyScrollOnFocus(objects.tab_page_tools);
+    if (lv_group_t *group = lv_group_get_default()) {
+        lv_obj_t *mapButtons[] = {objects.gps_lock_button, objects.zoom_in_button, objects.zoom_out_button,
+                                  objects.arrow_up_button, objects.arrow_left_button, objects.nav_button,
+                                  objects.arrow_right_button, objects.arrow_down_button};
+        for (lv_obj_t *button : mapButtons) {
+            lv_obj_remove_flag(button, LV_OBJ_FLAG_SCROLLABLE);
+            lv_group_remove_obj(button);
+        }
+        for (lv_obj_t *button : mapButtons) {
+            lv_group_add_obj(group, button);
+        }
+    }
+    lv_obj_set_width(objects.settings_user_long_textarea, LV_PCT(80));
+    lv_obj_set_width(objects.settings_wifi_ssid_textarea, LV_PCT(80));
+    lv_obj_set_width(objects.settings_wifi_password_textarea, LV_PCT(80));
+    lv_obj_set_width(objects.settings_modify_channel_name_textarea, LV_PCT(82));
+    lv_obj_set_width(objects.settings_modify_channel_psk_textarea, LV_PCT(82));
+    lv_obj_set_width(objects.setup_user_long_textarea, LV_PCT(80));
+#endif
     // lv_imagebutton widgets are not group-default in LVGL, so add map controls explicitly.
     if (lv_group_t *group = lv_group_get_default()) {
         lv_group_add_obj(group, objects.nav_button);
@@ -1206,6 +1397,11 @@ void TFTView_320x240::apply_hotfix(void)
         for (int i = 0; i < 6; i++) {
             lv_obj_set_size(button[i], 72, 72);
         }
+    } else if (h == 480 && v == 222) {
+        lv_obj_t *compactNavigationIcons[] = {objects.home_button, objects.nodes_button, objects.groups_button,
+                                                objects.messages_button, objects.map_button, objects.settings_button};
+        for (lv_obj_t *icon : compactNavigationIcons)
+            lv_obj_set_size(icon, 32, 32);
     }
 
     NavigationPanelLayout::configure(objects.button_panel,
@@ -2276,6 +2472,20 @@ void TFTView_320x240::ui_event_MapButton(lv_event_t *e)
             ignoreClicked = false;
             return;
         }
+#if defined(INPUTDRIVER_ROTARY_TYPE)
+        lv_indev_t *indev = lv_indev_active();
+        if (indev && lv_indev_get_type(indev) == LV_INDEV_TYPE_ENCODER) {
+            if (THIS->activePanel != objects.map_panel) {
+                THIS->ui_set_active(objects.map_button, objects.map_panel, objects.top_map_panel);
+                THIS->loadMap();
+            }
+            THIS->setMapInputState(input_policy::FocusSemantic::MapControls);
+            lv_obj_add_flag(objects.map_osd_panel, LV_OBJ_FLAG_HIDDEN);
+            if (lv_group_t *group = lv_group_get_default())
+                lv_group_focus_obj(objects.gps_lock_button);
+            return;
+        }
+#endif
         // from the button menu the (previewed) map is entered instead of toggling its controls
         const bool fromButtonMenu =
             THIS->inputdriver->hasKeyboardDevice() && lv_indev_get_group(THIS->inputdriver->getKeyboard()) == groups.mainButtons;
@@ -2725,6 +2935,10 @@ void TFTView_320x240::ui_event_MemoryButton(lv_event_t *e)
 
 void TFTView_320x240::ui_event_QrButton(lv_event_t *e)
 {
+    if (!lv_obj_has_flag(objects.home_show_qr_panel, LV_OBJ_FLAG_HIDDEN)) {
+        THIS->ui_event_CancelQrButton(e);
+        return;
+    }
     meshtastic_SharedContact contact{.node_num = THIS->ownNode, .has_user = true, .user = THIS->db.user, .should_ignore = false};
 
     meshtastic_Data_payload_t payload;
@@ -7310,6 +7524,10 @@ void TFTView_320x240::screenSaving(bool enabled)
             ILOG_DEBUG("showing boot screen");
             setInputGroup(defaultPanelGroup);
             lv_screen_load_anim(objects.boot_screen, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+#if defined(INPUTDRIVER_ROTARY_TYPE)
+            if (THIS->state == MeshtasticView::eProgrammingMode && objects.bluetooth_button)
+                lv_group_focus_obj(objects.bluetooth_button);
+#endif
             screenLocked = false;
         }
     }
@@ -8982,9 +9200,15 @@ void TFTView_320x240::updateNodesFiltered(bool reset, bool forceRebind)
  *
  * @param nodeNum
  */
-void TFTView_320x240::updateLastHeard(uint32_t nodeNum)
+void TFTView_320x240::updateLastHeard(uint32_t nodeNum, uint32_t receivedAt)
 {
-    requestNodeListPresentation(nodeStore.updateLastHeard(nodeNum, curtime));
+    const NodeRecord *record = nodeStore.find(nodeNum);
+    uint32_t lastHeard = nodeNum == ownNode ? curtime : receivedAt;
+    if (nodeNum != ownNode && record && record->lastHeard > lastHeard && record->lastHeard <= curtime)
+        lastHeard = record->lastHeard;
+    if (!lastHeard || lastHeard > curtime)
+        return;
+    requestNodeListPresentation(nodeStore.updateLastHeard(nodeNum, lastHeard));
 }
 
 /**

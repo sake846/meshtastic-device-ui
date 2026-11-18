@@ -137,19 +137,36 @@ inline void formatShortNameWithDistance(char *buffer, size_t bufferSize, const c
     }
 }
 
-// Position detail lines: "%.5f %.5f" coordinates and "<alt><unit> MSL";
-// altitude magnitudes of 10000 or more clamp the displayed value to zero.
+// Format coordinates and altitude together so the expanded row fits short displays.
 inline void formatPositionLines(int32_t latitude, int32_t longitude, int32_t altitude, bool metricUnits, char *positionText,
                                 size_t positionTextSize, char *altitudeText, size_t altitudeTextSize)
 {
+    int32_t latSeconds = static_cast<int32_t>(std::round(latitude * 1e-7 * 3600));
+    int32_t latDegrees = latSeconds / 3600;
+    latSeconds %= 3600;
+    int32_t lonSeconds = static_cast<int32_t>(std::round(longitude * 1e-7 * 3600));
+    int32_t lonDegrees = lonSeconds / 3600;
+    lonSeconds %= 3600;
+    if (latSeconds < 0) latSeconds = -latSeconds;
+    if (latDegrees < 0) latDegrees = -latDegrees;
+    if (lonSeconds < 0) lonSeconds = -lonSeconds;
+    if (lonDegrees < 0) lonDegrees = -lonDegrees;
+    const int32_t latMinutes = latSeconds / 60;
+    const int32_t lonMinutes = lonSeconds / 60;
+    const char latDirection = latitude < 0 ? 'S' : 'N';
+    const char lonDirection = longitude < 0 ? 'W' : 'E';
     int32_t shownAltitude = altitude > -10000 && altitude < 10000 ? altitude : 0;
     const char *altitudeUnits = "m";
     if (!metricUnits) {
         shownAltitude = static_cast<int32_t>(static_cast<float>(shownAltitude) * 3.28084f);
         altitudeUnits = "ft";
     }
-    std::snprintf(positionText, positionTextSize, "%.5f %.5f", latitude * 1e-7, longitude * 1e-7);
-    std::snprintf(altitudeText, altitudeTextSize, "%d%s MSL", static_cast<int>(shownAltitude), altitudeUnits);
+    std::snprintf(positionText, positionTextSize,
+                  "%c%02d° %02d'%02d\" %c%03d° %02d'%02d\" %d%s MSL", latDirection, latDegrees, latMinutes,
+                  latSeconds % 60, lonDirection, lonDegrees, lonMinutes, lonSeconds % 60, static_cast<int>(shownAltitude),
+                  altitudeUnits);
+    if (altitudeTextSize > 0)
+        altitudeText[0] = '\0';
 }
 
 // Environment telemetry lines, including the IAQ chip line.

@@ -155,7 +155,7 @@ class MeshtasticView : public DeviceGUI
     virtual bool hasKnownNodeForPacket(uint32_t nodeNum) const;
 
     // local update methods
-    virtual void updateLastHeard(uint32_t nodeNum);
+    virtual void updateLastHeard(uint32_t nodeNum, uint32_t receivedAt = 0);
     virtual void updateTime(uint32_t time) {}
 
   protected:

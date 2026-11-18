@@ -3,6 +3,7 @@
 #include "graphics/common/MeshtasticView.h"
 #include "util/ILog.h"
 #include "util/LogMessage.h"
+#include "UptimeClock.h"
 #include <algorithm>
 #include <utility>
 
@@ -979,7 +980,17 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
     } else if (p.hop_start > 0) {
         view->updateHopsAway(p.from, p.hop_start - p.hop_limit);
     }
-    view->updateLastHeard(p.from);
+    uint32_t receivedAt = p.rx_time;
+    if (!p.has_rx_time) {
+        const uint32_t nowUptime = Time::getUptimeSecs();
+        time_t now;
+        time(&now);
+        if (!receivedAt || receivedAt > nowUptime || now < (time_t)(nowUptime - receivedAt))
+            receivedAt = 0;
+        else
+            receivedAt = (uint32_t)(now - (nowUptime - receivedAt));
+    }
+    view->updateLastHeard(p.from, receivedAt);
 
     switch (p.decoded.portnum) {
     case meshtastic_PortNum_ALERT_APP:

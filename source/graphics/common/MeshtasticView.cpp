@@ -117,7 +117,7 @@ void MeshtasticView::notifyShutdown(void) {}
 
 void MeshtasticView::showMessagePopup(const char *from) {}
 
-void MeshtasticView::updateLastHeard(uint32_t nodeNum) {}
+void MeshtasticView::updateLastHeard(uint32_t nodeNum, uint32_t receivedAt) {}
 
 bool MeshtasticView::hasKnownNodeForPacket(uint32_t nodeNum) const
 {
@@ -129,12 +129,10 @@ void MeshtasticView::packetReceived(const meshtastic_MeshPacket &p)
     // if there's a message from a node we don't know (yet), create it with defaults
     if (!hasKnownNodeForPacket(p.from)) {
         addOrUpdateNode(p.from, p.channel, 0, eRole::unknown, false, false);
-        updateLastHeard(p.from);
     }
     if (p.to != ownNode && p.to != 0xffffffff) {
         if (!hasKnownNodeForPacket(p.to)) {
             addOrUpdateNode(p.to, p.channel, 0, eRole::unknown, false, false);
-            updateLastHeard(p.to);
         }
     }
 }

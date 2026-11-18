@@ -137,25 +137,141 @@ void TCA8418KeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *indev
     data->key = (uint32_t)keyValue;
 }
 
+static uint8_t pagerKeyboardReadRegister(uint8_t address, uint8_t reg)
+{
+    Wire.beginTransmission(address);
+    Wire.write(reg);
+    const uint8_t status = Wire.endTransmission(false);
+    const size_t count = Wire.requestFrom(address, static_cast<uint8_t>(1));
+    if (status != 0 || count == 0)
+        return 0;
+    return Wire.read();
+}
+
+static void pagerKeyboardWriteRegister(uint8_t address, uint8_t reg, uint8_t value)
+{
+    Wire.beginTransmission(address);
+    Wire.write(reg);
+    Wire.write(value);
+    // Release the Wire lock if its buffers were removed during bus recovery.
+    if (Wire.endTransmission() == 4)
+        Wire.requestFrom(address, static_cast<uint8_t>(1));
+}
+
+static uint8_t pagerKeyboardModifiers = 0;
+bool pagerFunctionModifierActive = false;
+
+void pagerClearFunctionModifier()
+{
+    pagerKeyboardModifiers &= ~0x02;
+    pagerFunctionModifierActive = false;
+}
+
+static const char pagerKeyboardMap[31][3] = {
+    {'q', 'Q', '1'}, {'w', 'W', '2'}, {'e', 'E', '3'}, {'r', 'R', '4'}, {'t', 'T', '5'},
+    {'y', 'Y', '6'}, {'u', 'U', '7'}, {'i', 'I', '8'}, {'o', 'O', '9'}, {'p', 'P', '0'},
+    {'a', 'A', '*'}, {'s', 'S', '/'}, {'d', 'D', '+'}, {'f', 'F', '-'}, {'g', 'G', '='},
+    {'h', 'H', ':'}, {'j', 'J', 0x27}, {'k', 'K', 0x22}, {'l', 'L', '@'},
+    {0, 0, 0}, {0, 0, 0}, {'z', 'Z', '_'}, {'x', 'X', '$'}, {'c', 'C', ';'},
+    {'v', 'V', '?'}, {'b', 'B', '!'}, {'n', 'N', ','}, {'m', 'M', '.'},
+    {0, 0, 0}, {0, 0, 0}, {' ', ' ', ' '}
+};
+
 // ---------- TLoraPagerKeyboardInputDriver Implementation ----------
 
 TLoraPagerKeyboardInputDriver::TLoraPagerKeyboardInputDriver(uint8_t address) : TCA8418KeyboardInputDriver(address)
 {
-    registerI2CKeyboard(this, "TLora Pager Keyboard", address);
 }
 
 void TLoraPagerKeyboardInputDriver::init(void)
 {
-    // Additional initialization for TLora-Pager if needed
-    TCA8418KeyboardInputDriver::init();
+    I2CKeyboardInputDriver::init();
+    pagerKeyboardWriteRegister(0x34, 0x23, 0x00);
+    pagerKeyboardWriteRegister(0x34, 0x24, 0x00);
+    pagerKeyboardWriteRegister(0x34, 0x25, 0x00);
+    pagerKeyboardWriteRegister(0x34, 0x20, 0xFF);
+    pagerKeyboardWriteRegister(0x34, 0x21, 0xFF);
+    pagerKeyboardWriteRegister(0x34, 0x22, 0xFF);
+    pagerKeyboardWriteRegister(0x34, 0x26, 0x00);
+    pagerKeyboardWriteRegister(0x34, 0x27, 0x00);
+    pagerKeyboardWriteRegister(0x34, 0x28, 0x00);
+    pagerKeyboardWriteRegister(0x34, 0x1A, 0xFF);
+    pagerKeyboardWriteRegister(0x34, 0x1B, 0xFF);
+    pagerKeyboardWriteRegister(0x34, 0x1C, 0xFF);
+    pagerKeyboardWriteRegister(0x34, 0x1D, 0x0F);
+    pagerKeyboardWriteRegister(0x34, 0x1E, 0xFF);
+    pagerKeyboardWriteRegister(0x34, 0x1F, 0x03);
+    pagerKeyboardWriteRegister(0x34, 0x29, 0x00);
+    pagerKeyboardWriteRegister(0x34, 0x2A, 0x00);
+    pagerKeyboardWriteRegister(0x34, 0x2B, 0x00);
+    while ((pagerKeyboardReadRegister(0x34, 0x03) & 0x0F) != 0)
+        pagerKeyboardReadRegister(0x34, 0x04);
+    pagerKeyboardWriteRegister(0x34, 0x02, 0x03);
 }
 
 void TLoraPagerKeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *indev, lv_indev_data_t *data)
 {
-    // TODO
-    char keyValue = 0;
+    static bool releasePending = false;
     data->state = LV_INDEV_STATE_RELEASED;
-    data->key = (uint32_t)keyValue;
+    data->key = 0;
+
+    if (releasePending) {
+        releasePending = false;
+        data->continue_reading = true;
+        return;
+    }
+
+    uint8_t count = pagerKeyboardReadRegister(address, 0x03) & 0x0F;
+    if (!count)
+        return;
+    while (count--) {
+        uint8_t event = pagerKeyboardReadRegister(address, 0x04);
+        if ((event & 0x80) == 0)
+            continue;
+
+        lv_display_trigger_activity(lv_indev_get_display(indev));
+        uint8_t keyIndex = (event & 0x7F) - 1;
+        uint32_t keyValue = 0;
+        lv_group_t *group = lv_indev_get_group(indev);
+        lv_obj_t *focused = group ? lv_group_get_focused(group) : nullptr;
+        const bool textArea = focused && lv_obj_check_type(focused, &lv_textarea_class);
+        if (keyIndex == 20) {
+            pagerKeyboardModifiers ^= 0x02;
+            pagerFunctionModifierActive = (pagerKeyboardModifiers & 0x02) != 0;
+        } else if (keyIndex == 28) {
+            pagerKeyboardModifiers ^= 0x01;
+        } else if (keyIndex == 19 || keyIndex == 29) {
+            const bool back = !textArea || (pagerKeyboardModifiers & 0x02);
+            pagerKeyboardModifiers = 0;
+            pagerFunctionModifierActive = false;
+            if (back) {
+#if defined(INPUTDRIVER_ROTARY_TYPE)
+                extern bool pagerHandleBack(lv_indev_t *indev);
+                if (pagerHandleBack(indev))
+                    continue;
+#endif
+                keyValue = LV_KEY_ESC;
+            } else {
+                keyValue = keyIndex == 19 ? LV_KEY_ENTER : LV_KEY_BACKSPACE;
+            }
+        } else if (keyIndex < 31) {
+            const uint8_t mapIndex = (pagerKeyboardModifiers & 0x02) ? 2 : ((pagerKeyboardModifiers & 0x01) ? 1 : 0);
+            keyValue = static_cast<uint8_t>(pagerKeyboardMap[keyIndex][mapIndex]);
+            if (keyValue != 0) {
+                pagerKeyboardModifiers = 0;
+                pagerFunctionModifierActive = false;
+            }
+        }
+
+        if (keyValue != 0) {
+            data->key = keyValue;
+            data->state = LV_INDEV_STATE_PRESSED;
+            data->continue_reading = true;
+            releasePending = true;
+            return;
+        }
+    }
+    pagerKeyboardWriteRegister(address, 0x02, 0x01);
 }
 
 // ---------- TDeckProKeyboardInputDriver Implementation ----------

@@ -311,8 +311,8 @@ void VirtualNodeList::createRowPool()
 
         row.lblPos1 = lv_label_create(row.panel);
         lv_obj_set_pos(row.lblPos1, -5, 49);
-        lv_obj_set_size(row.lblPos1, 120, LV_SIZE_CONTENT);
-        lv_label_set_long_mode(row.lblPos1, LV_LABEL_LONG_CLIP);
+        lv_obj_set_size(row.lblPos1, LV_PCT(70), LV_SIZE_CONTENT);
+        lv_label_set_long_mode(row.lblPos1, LV_LABEL_LONG_SCROLL_CIRCULAR);
         lv_obj_remove_flag(row.lblPos1, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_style_align(row.lblPos1, LV_ALIGN_TOP_LEFT, LV_PART_MAIN);
         lv_obj_set_style_text_color(row.lblPos1, lv_color_hex(0x05f6cb), LV_PART_MAIN);
@@ -922,7 +922,7 @@ void VirtualNodeList::bindRow(ReusableRow &row, const NodeRecord &record, bool i
         lv_obj_remove_flag(row.lblPos1, LV_OBJ_FLAG_CLICKABLE);
     }
     setHidden(row.lblPos1, !isExpanded || !showPosition);
-    setHidden(row.lblPos2, !isExpanded || !showPosition);
+    setHidden(row.lblPos2, !isExpanded || !showPosition || !row.position2Text[0]);
 
     const bool showTelemetry1 = record.hasEnvironmentMetrics;
     const auto &env = record.environmentMetrics;

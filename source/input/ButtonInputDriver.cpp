@@ -14,7 +14,7 @@ void ButtonInputDriver::init(void)
 
     // assign buttons to points on the screen
     static const lv_point_t btn_points[1] = {
-        {10, 235} // button0: (cog symbol) and button on blank screen
+        {10, static_cast<lv_coord_t>(lv_display_get_vertical_resolution(lv_display_get_default()) - 5)}
     };
 
     lv_indev_set_button_points(button, btn_points);

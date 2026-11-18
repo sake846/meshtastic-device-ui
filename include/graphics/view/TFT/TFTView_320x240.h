@@ -241,7 +241,7 @@ class TFTView_320x240 : public MeshtasticView, private NodeListActionSink
     // apply filter and count number of filtered nodes
     virtual void updateNodesFiltered(bool reset, bool forceRebind = false);
     // set last heard to now, update nodes online
-    virtual void updateLastHeard(uint32_t nodeNum);
+    virtual void updateLastHeard(uint32_t nodeNum, uint32_t receivedAt = 0);
     // update last heard value on all node panels
     virtual void updateAllLastHeard(void);
     // update image and unread messages on home screen
