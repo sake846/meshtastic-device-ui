@@ -1767,7 +1767,7 @@ void TFTView_320x240::ui_events_init(void)
     lv_obj_set_style_text_line_space(muiM10QzssLabel,
                                      lv_obj_get_style_text_line_space(objects.home_location_label, LV_PART_MAIN),
                                      LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_align(muiM10QzssLabel, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(muiM10QzssLabel, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_label_set_recolor(muiM10QzssLabel, true);
 #endif
     lv_obj_add_event_cb(objects.home_wlan_button, this->ui_event_WLANButton, LV_EVENT_LONG_PRESSED, NULL);
