@@ -1,4 +1,7 @@
 #include "graphics/view/TFT/VirtualNodeList.h"
+#if defined(HAS_QZSS_DCR)
+#include "gps/QzssDcr.h"
+#endif
 
 #include "core/lv_group_private.h"
 #include "fonts.h"
@@ -881,15 +884,29 @@ void VirtualNodeList::bindRow(ReusableRow &row, const NodeRecord &record, bool i
     formatLastHeard(effectiveLastHeard, currentTime, row.lastHeardText, sizeof(row.lastHeardText));
     lv_label_set_text_static(row.lblLh, row.lastHeardText);
 
-    if (record.id == renderContext.ownNode && record.hasDeviceMetrics) {
-        std::snprintf(row.signalText, sizeof(row.signalText), _("Util %0.1f%%  Air %0.1f%%"),
-                      record.deviceMetrics.channel_utilization, record.deviceMetrics.air_util_tx);
-    } else if (record.signalDisplay == NodeSignalDisplayKind::Hops && record.hopsAway >= 0) {
-        std::snprintf(row.signalText, sizeof(row.signalText), _("hops: %d"), static_cast<int>(record.hopsAway));
-    } else if (record.signalDisplay == NodeSignalDisplayKind::Rssi && (record.rssi != 0 || record.snr != 0.0f)) {
-        std::snprintf(row.signalText, sizeof(row.signalText), "rssi: %d snr: %.1f", static_cast<int>(record.rssi), record.snr);
-    } else {
-        row.signalText[0] = '\0';
+    bool hasQzssSignal = false;
+#if defined(HAS_QZSS_DCR)
+    const uint32_t nodeNum = static_cast<uint32_t>(record.id);
+    if (nodeNum > QzssDcr::MICHIBIKI_NODE_NUM_BASE &&
+        nodeNum <= QzssDcr::MICHIBIKI_NODE_NUM_BASE + QzssDcr::MAX_QZSS_SATELLITES) {
+        uint8_t cno = 0;
+        if (QzssDcr::getLastSatelliteCno(static_cast<uint8_t>(nodeNum - QzssDcr::MICHIBIKI_NODE_NUM_BASE), cno)) {
+            std::snprintf(row.signalText, sizeof(row.signalText), "C/N0: %u dB-Hz", static_cast<unsigned>(cno));
+            hasQzssSignal = true;
+        }
+    }
+#endif
+    if (!hasQzssSignal) {
+        if (record.id == renderContext.ownNode && record.hasDeviceMetrics) {
+            std::snprintf(row.signalText, sizeof(row.signalText), _("Util %0.1f%%  Air %0.1f%%"),
+                          record.deviceMetrics.channel_utilization, record.deviceMetrics.air_util_tx);
+        } else if (record.signalDisplay == NodeSignalDisplayKind::Hops && record.hopsAway >= 0) {
+            std::snprintf(row.signalText, sizeof(row.signalText), _("hops: %d"), static_cast<int>(record.hopsAway));
+        } else if (record.signalDisplay == NodeSignalDisplayKind::Rssi && (record.rssi != 0 || record.snr != 0.0f)) {
+            std::snprintf(row.signalText, sizeof(row.signalText), "rssi: %d snr: %.1f", static_cast<int>(record.rssi), record.snr);
+        } else {
+            row.signalText[0] = '\0';
+        }
     }
     lv_label_set_text_static(row.lblSig, "");
     lv_label_set_text_static(row.lblSig, row.signalText);
