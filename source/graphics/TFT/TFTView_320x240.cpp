@@ -39,6 +39,9 @@
 #include "storage/MapStorage.h"
 #include "styles.h"
 #include "ui.h"
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_FONT)
+#include "device_ui_japanese_font.h"
+#endif
 #if defined(INPUTDRIVER_ROTARY_TYPE)
 extern void pagerSetActiveMenuButton(lv_obj_t *button);
 #endif
@@ -6476,15 +6479,20 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
     lv_obj_set_style_pad_bottom(hiddenPanel, 0, LV_PART_MAIN);
     hiddenPanel->user_data = reinterpret_cast<void *>(static_cast<uintptr_t>(entry.requestId));
     const char *buf = entry.text.c_str();
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_FONT)
+    const lv_font_t *messageFont = &device_ui_japanese_font;
+#else
+    const lv_font_t *messageFont = &ui_font_montserrat_14;
+#endif
 
     lv_obj_t *textLabel = lv_label_create(hiddenPanel);
     lv_group_add_obj(defaultPanelGroup, textLabel);
     // calculate expected size of text bubble, to make it look nicer
 #if LV_VERSION_CHECK(9, 5, 0)
     lv_text_attributes_t attributes = {0};
-    lv_coord_t width = lv_text_get_width(buf, strlen(buf), &ui_font_montserrat_14, &attributes);
+    lv_coord_t width = lv_text_get_width(buf, strlen(buf), messageFont, &attributes);
 #else
-    lv_coord_t width = lv_text_get_width(buf, strlen(buf), &ui_font_montserrat_14, LV_TEXT_FLAG_NONE);
+    lv_coord_t width = lv_text_get_width(buf, strlen(buf), messageFont, LV_TEXT_FLAG_NONE);
 #endif
     lv_obj_set_width(textLabel, entry.sent ? std::max<int32_t>(std::min<int32_t>((int32_t)width + 10, 200) + 10, 50)
                                            : std::max<int32_t>(std::min<int32_t>((int32_t)width, 160) + 10, 45));
@@ -6503,6 +6511,9 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
                             reinterpret_cast<void *>(static_cast<uintptr_t>(entry.node)));
     }
 
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_FONT)
+    lv_obj_set_style_text_font(textLabel, messageFont, LV_PART_MAIN | LV_STATE_DEFAULT);
+#endif
     switch (entry.status) {
     case LogMessage::eHeard:
         lv_obj_set_style_border_color(textLabel, colorYellow, LV_PART_MAIN);
