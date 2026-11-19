@@ -3207,11 +3207,10 @@ void TFTView_320x240::ui_event_Keyboard(lv_event_t *e)
 void TFTView_320x240::ui_event_message_ready(lv_event_t *e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
+    if (THIS && THIS->evacuatingChatFocus)
+        return;
     ILOG_DEBUG("ui_event_message_ready: event_code=%d", event_code);
     if (event_code == LV_EVENT_FOCUSED) {
-        // Ignore internal focus evacuation so it does not hijack the active group or edit state.
-        if (THIS && THIS->evacuatingChatFocus)
-            return;
         if (THIS && THIS->defaultPanelGroup)
             THIS->setInputGroup(THIS->defaultPanelGroup);
         TextareaEditContext::focus(lv_event_get_target_obj(e));
@@ -6561,6 +6560,26 @@ void TFTView_320x240::evacuateChatFocus(lv_obj_t *target, bool suppressFocusEffe
     }
 }
 
+void TFTView_320x240::placeMessageInputAfterChat(lv_obj_t *container)
+{
+    if (container != activeMsgContainer || !defaultPanelGroup ||
+        lv_obj_get_group(objects.message_input_area) != defaultPanelGroup)
+        return;
+
+    const uint32_t count = lv_group_get_obj_count(defaultPanelGroup);
+    if (!count || lv_group_get_obj_by_index(defaultPanelGroup, count - 1) == objects.message_input_area)
+        return;
+
+    const bool inputFocused = lv_group_get_focused(defaultPanelGroup) == objects.message_input_area;
+    const bool previousSuppress = evacuatingChatFocus;
+    evacuatingChatFocus = true;
+    lv_group_remove_obj(objects.message_input_area);
+    lv_group_add_obj(defaultPanelGroup, objects.message_input_area);
+    if (inputFocused)
+        lv_group_focus_obj(objects.message_input_area);
+    evacuatingChatFocus = previousSuppress;
+}
+
 void TFTView_320x240::appendChatEntry(lv_obj_t *container, ChatHistory::Entry entry)
 {
     auto &history = chatHistories[container];
@@ -6585,6 +6604,7 @@ void TFTView_320x240::appendChatEntry(lv_obj_t *container, ChatHistory::Entry en
         lv_obj_delete(oldest);
     }
     auto *newest = createChatBubble(container, history.at(history.last() - 1));
+    placeMessageInputAfterChat(container);
     lv_obj_scroll_to_view(newest, LV_ANIM_ON);
     history.scrollY = INT32_MAX;
     updatingChat = false;
@@ -6645,6 +6665,7 @@ void TFTView_320x240::renderChat(lv_obj_t *container, bool follow, size_t previo
             }
         }
     }
+    placeMessageInputAfterChat(container);
     history.scrollY =
         history.atLatest() && lv_obj_get_scroll_bottom(container) <= 20 ? INT32_MAX : lv_obj_get_scroll_y(container);
     updatingChat = false;

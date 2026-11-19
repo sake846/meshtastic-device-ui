@@ -387,6 +387,7 @@ class TFTView_320x240 : public MeshtasticView, private NodeListActionSink
     void hideChat(lv_obj_t *container);
     bool isDefaultPanelGroupActive(void) const;
     void evacuateChatFocus(lv_obj_t *target, bool suppressFocusEffects);
+    void placeMessageInputAfterChat(lv_obj_t *container);
     void shiftChat(lv_obj_t *container, bool older);
     static void ui_event_chat_history(lv_event_t *event);
     void showLoRaFrequency(const meshtastic_Config_LoRaConfig &cfg);
