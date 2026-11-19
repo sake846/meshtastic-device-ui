@@ -1759,10 +1759,10 @@ void TFTView_320x240::ui_events_init(void)
     lv_obj_set_size(muiM10QzssLabel, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_style_text_font(muiM10QzssLabel, &ui_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(muiM10QzssLabel,
-                              lv_obj_get_style_bg_color(objects.home_location_label, LV_PART_MAIN | LV_STATE_DEFAULT),
+                              lv_obj_get_style_bg_color(objects.home_location_label, LV_PART_MAIN),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(muiM10QzssLabel,
-                            lv_obj_get_style_bg_opa(objects.home_location_label, LV_PART_MAIN | LV_STATE_DEFAULT),
+                            lv_obj_get_style_bg_opa(objects.home_location_label, LV_PART_MAIN),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_line_space(muiM10QzssLabel,
                                      lv_obj_get_style_text_line_space(objects.home_location_label, LV_PART_MAIN),
