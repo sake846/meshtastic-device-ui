@@ -2806,6 +2806,14 @@ void TFTView_320x240::ui_event_BellButton(lv_event_t *e)
             THIS->db.uiConfig.ring_tone_id = 1;
         const uint32_t tone = THIS->db.uiConfig.alert_enabled ? THIS->db.uiConfig.ring_tone_id : 0;
         THIS->controller->sendConfig(ringtone[tone].rtttl, THIS->ownNode);
+        if (THIS->db.module_config.has_external_notification) {
+            auto &notification = THIS->db.module_config.external_notification;
+            if (notification.alert_message_buzzer != THIS->db.uiConfig.alert_enabled) {
+                notification.alert_message_buzzer = THIS->db.uiConfig.alert_enabled;
+                THIS->controller->sendConfig(meshtastic_ModuleConfig_ExternalNotificationConfig{notification},
+                                             THIS->ownNode);
+            }
+        }
         THIS->setBellText(THIS->db.uiConfig.banner_enabled, THIS->db.uiConfig.alert_enabled);
         THIS->controller->storeUIConfig(THIS->db.uiConfig);
     };
@@ -6087,6 +6095,9 @@ void TFTView_320x240::ui_event_ok(lv_event_t *e)
                 }
                 THIS->notifyReboot(true);
                 THIS->controller->sendConfig(meshtastic_ModuleConfig_ExternalNotificationConfig{config}, THIS->ownNode);
+            } else if (!alert_message && config.alert_message_buzzer) {
+                config.alert_message_buzzer = false;
+                THIS->controller->sendConfig(meshtastic_ModuleConfig_ExternalNotificationConfig{config}, THIS->ownNode);
             }
 
             // the banner setting is not part of this dialog and stays untouched
@@ -6916,15 +6927,11 @@ void TFTView_320x240::updatePosition(uint32_t nodeNum, int32_t lat, int32_t lon,
 
     if (nodeNum == ownNode) {
         char buf[64];
-        const int64_t latitude = lat;
-        const int64_t longitude = lon;
-        const int64_t absLatitude = latitude < 0 ? -latitude : latitude;
-        const int64_t absLongitude = longitude < 0 ? -longitude : longitude;
-        std::snprintf(buf, sizeof(buf), "%s%lu.%05lu,%s%lu.%05lu %d%s", lat < 0 ? "-" : "",
-                      static_cast<unsigned long>(absLatitude / 10000000),
-                      static_cast<unsigned long>((absLatitude % 10000000) / 100), lon < 0 ? "-" : "",
-                      static_cast<unsigned long>(absLongitude / 10000000),
-                      static_cast<unsigned long>((absLongitude % 10000000) / 100), shownAltitude, units);
+        const int latTotal = static_cast<int>(round(lat * 1e-7 * 3600));
+        const int lonTotal = static_cast<int>(round(lon * 1e-7 * 3600));
+        std::snprintf(buf, sizeof(buf), "%c%02i° %2i'%02i\" %c%02i° %2i'%02i\" %d%s", lat < 0 ? 'S' : 'N',
+                      abs(latTotal / 3600), abs(latTotal % 3600) / 60, abs(latTotal % 60), lon < 0 ? 'W' : 'E',
+                      abs(lonTotal / 3600), abs(lonTotal % 3600) / 60, abs(lonTotal % 60), shownAltitude, units);
         lv_label_set_text(objects.home_location_label, buf);
         if (position.hasCoordinates()) {
             hasPosition = true;
@@ -8139,6 +8146,11 @@ void TFTView_320x240::updateExtNotificationModule(const meshtastic_ModuleConfig_
 {
     db.module_config.external_notification = cfg;
     db.module_config.has_external_notification = true;
+    if (!db.uiConfig.alert_enabled && db.module_config.external_notification.alert_message_buzzer) {
+        db.module_config.external_notification.alert_message_buzzer = false;
+        controller->sendConfig(meshtastic_ModuleConfig_ExternalNotificationConfig{db.module_config.external_notification},
+                               ownNode);
+    }
 
     char buf[32];
     lv_snprintf(buf, sizeof(buf), _("Message Alert: %s"),
