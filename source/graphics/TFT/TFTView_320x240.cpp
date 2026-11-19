@@ -114,8 +114,12 @@ static void muiRefreshQzssStatus()
         }
     }
 
-    lv_obj_align_to(muiM10QzssLabel, objects.home_location_label, LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_obj_align_to(muiDcrStatusLabel, muiM10QzssLabel, LV_ALIGN_TOP_RIGHT, 0, lv_obj_get_height(muiM10QzssLabel) + 2);
+    const lv_font_t *gpsFont = lv_obj_get_style_text_font(objects.home_location_label, LV_PART_MAIN);
+    const lv_coord_t gpsLineSpacing =
+        lv_font_get_line_height(gpsFont) + lv_obj_get_style_text_line_space(objects.home_location_label, LV_PART_MAIN);
+    const lv_coord_t gpsTop = lv_obj_get_y(objects.home_location_label);
+    lv_obj_align(muiM10QzssLabel, LV_ALIGN_TOP_RIGHT, 0, gpsTop);
+    lv_obj_align(muiDcrStatusLabel, LV_ALIGN_TOP_RIGHT, 0, gpsTop + gpsLineSpacing);
     lv_obj_move_foreground(muiM10QzssLabel);
     lv_obj_move_foreground(muiDcrStatusLabel);
 }
@@ -1073,6 +1077,7 @@ void TFTView_320x240::showActivePanel(lv_obj_t *b, lv_obj_t *p, lv_obj_t *tp)
             virtualNodeListInputVisibilityKnown = false;
         }
         if (activePanel == objects.messages_panel) {
+            lv_group_set_wrap(defaultPanelGroup, defaultPanelGroupWrapBeforeChat);
             lv_obj_remove_state(objects.message_input_area, LV_STATE_FOCUSED);
             resetKeyboardSlide();
             uint32_t channelOrNode = (uintptr_t)activeMsgContainer->user_data;
@@ -1095,8 +1100,11 @@ void TFTView_320x240::showActivePanel(lv_obj_t *b, lv_obj_t *p, lv_obj_t *tp)
     }
 
     lv_obj_remove_flag(p, LV_OBJ_FLAG_HIDDEN);
-    if (p == objects.messages_panel)
+    if (p == objects.messages_panel) {
+        defaultPanelGroupWrapBeforeChat = lv_group_get_wrap(defaultPanelGroup);
+        lv_group_set_wrap(defaultPanelGroup, false);
         renderChat(activeMsgContainer);
+    }
     if (p == objects.nodes_panel) {
         ensureVirtualNodeList();
     } else if (p == objects.map_panel && !displaydriver->hasTouch()) {
@@ -6487,15 +6495,8 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
 
     lv_obj_t *textLabel = lv_label_create(hiddenPanel);
     lv_group_add_obj(defaultPanelGroup, textLabel);
-    // calculate expected size of text bubble, to make it look nicer
-#if LV_VERSION_CHECK(9, 5, 0)
-    lv_text_attributes_t attributes = {0};
-    lv_coord_t width = lv_text_get_width(buf, strlen(buf), messageFont, &attributes);
-#else
-    lv_coord_t width = lv_text_get_width(buf, strlen(buf), messageFont, LV_TEXT_FLAG_NONE);
-#endif
-    lv_obj_set_width(textLabel, entry.sent ? std::max<int32_t>(std::min<int32_t>((int32_t)width + 10, 200) + 10, 50)
-                                           : std::max<int32_t>(std::min<int32_t>((int32_t)width, 160) + 10, 45));
+    lv_obj_set_width(textLabel, LV_SIZE_CONTENT);
+    lv_obj_set_style_max_width(textLabel, lv_pct(80), LV_PART_MAIN);
     lv_obj_set_height(textLabel, LV_SIZE_CONTENT);
     lv_obj_set_y(textLabel, 0);
     lv_obj_set_align(textLabel, entry.sent ? LV_ALIGN_RIGHT_MID : LV_ALIGN_LEFT_MID);

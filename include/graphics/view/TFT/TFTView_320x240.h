@@ -545,6 +545,7 @@ class TFTView_320x240 : public MeshtasticView, private NodeListActionSink
     lv_obj_t *activeMsgContainer = nullptr;
     std::unordered_map<lv_obj_t *, ChatHistory> chatHistories;
     bool updatingChat = false;
+    bool defaultPanelGroupWrapBeforeChat = true;
     bool evacuatingChatFocus = false;
     bool blankedFromLockScreen = false;
     bool pendingFocusRestoreOnMainLoad = false;
