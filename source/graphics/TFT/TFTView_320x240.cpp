@@ -55,6 +55,7 @@ extern void pagerSetActiveMenuButton(lv_obj_t *button);
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <iomanip>
@@ -63,6 +64,36 @@ extern void pagerSetActiveMenuButton(lv_obj_t *button);
 #include <random>
 #include <sstream>
 #include <time.h>
+
+#if defined(USE_I2S_BUZZER)
+static constexpr uint8_t defaultAlertVolume = 20;
+static uint8_t alertVolume = defaultAlertVolume;
+static lv_obj_t *alertVolumeSlider = nullptr;
+static lv_obj_t *alertVolumeLabel = nullptr;
+
+static void updateAlertVolumeLabel(lv_obj_t *label, int volume)
+{
+    char text[32];
+    lv_snprintf(text, sizeof(text), _("Volume: %d%%"), volume);
+    lv_label_set_text(label, text);
+}
+
+static void sendAlertRingtone(ViewController *controller, uint8_t tone, uint32_t nodeId)
+{
+    const char *rtttl = ringtone[tone].rtttl;
+    const char *colon = std::strchr(rtttl, ':');
+    if (!colon) {
+        controller->sendConfig(rtttl, nodeId);
+        return;
+    }
+
+    char ringtoneWithVolume[231];
+    const int length = std::snprintf(ringtoneWithVolume, sizeof(ringtoneWithVolume), "%.*s~v=%u%s",
+                                     static_cast<int>(colon - rtttl), rtttl, static_cast<unsigned>(alertVolume), colon);
+    controller->sendConfig(length >= 0 && static_cast<size_t>(length) < sizeof(ringtoneWithVolume) ? ringtoneWithVolume : rtttl,
+                           nodeId);
+}
+#endif
 
 #if defined(HAS_QZSS_DCR)
 static lv_obj_t *muiM10QzssLabel = nullptr;
@@ -2804,8 +2835,12 @@ void TFTView_320x240::ui_event_BellButton(lv_event_t *e)
     auto applyBellState = []() {
         if (THIS->db.uiConfig.ring_tone_id == 0)
             THIS->db.uiConfig.ring_tone_id = 1;
+#if defined(USE_I2S_BUZZER)
+        sendAlertRingtone(THIS->controller, static_cast<uint8_t>(THIS->db.uiConfig.ring_tone_id), THIS->ownNode);
+#else
         const uint32_t tone = THIS->db.uiConfig.alert_enabled ? THIS->db.uiConfig.ring_tone_id : 0;
         THIS->controller->sendConfig(ringtone[tone].rtttl, THIS->ownNode);
+#endif
         if (THIS->db.module_config.has_external_notification) {
             auto &notification = THIS->db.module_config.external_notification;
             if (notification.alert_message_buzzer != THIS->db.uiConfig.alert_enabled) {
@@ -3569,6 +3604,30 @@ void TFTView_320x240::ui_event_alert_button(lv_event_t *e)
         }
 
         lv_dropdown_set_selected(objects.settings_ringtone_dropdown, THIS->db.uiConfig.ring_tone_id - 1);
+#if defined(USE_I2S_BUZZER)
+        if (!alertVolumeSlider) {
+            lv_obj_set_height(objects.settings_alert_buzzer_panel, 180);
+            alertVolumeLabel = lv_label_create(objects.settings_alert_buzzer_panel);
+            lv_obj_set_pos(alertVolumeLabel, 10, 64);
+            alertVolumeSlider = lv_slider_create(objects.settings_alert_buzzer_panel);
+            lv_obj_set_pos(alertVolumeSlider, 20, 92);
+            lv_obj_set_size(alertVolumeSlider, 180, 18);
+            lv_slider_set_range(alertVolumeSlider, 0, 100);
+            lv_obj_add_flag(alertVolumeSlider, LV_OBJ_FLAG_EVENT_BUBBLE);
+            lv_obj_add_event_cb(
+                alertVolumeSlider,
+                [](lv_event_t *event) {
+                    auto *slider = lv_event_get_target(event);
+                    auto *label = static_cast<lv_obj_t *>(lv_event_get_user_data(event));
+                    updateAlertVolumeLabel(label, lv_slider_get_value(slider));
+                },
+                LV_EVENT_VALUE_CHANGED, alertVolumeLabel);
+            if (lv_group_t *group = lv_obj_get_group(objects.settings_ringtone_dropdown))
+                lv_group_add_obj(group, alertVolumeSlider);
+        }
+        lv_slider_set_value(alertVolumeSlider, alertVolume, LV_ANIM_OFF);
+        updateAlertVolumeLabel(alertVolumeLabel, alertVolume);
+#endif
         lv_obj_remove_flag(objects.settings_alert_buzzer_panel, LV_OBJ_FLAG_HIDDEN);
         lv_group_focus_obj(objects.settings_alert_buzzer_switch);
         THIS->disablePanel(objects.controller_panel);
@@ -4892,6 +4951,57 @@ void TFTView_320x240::removeSpinner(void)
 
 void TFTView_320x240::ui_event_node_details(lv_event_t *e)
 {
+#if defined(HAS_QZSS_DCR)
+    const uint32_t nodeNum = THIS->currentNode;
+    if (nodeNum > QzssDcr::MICHIBIKI_NODE_NUM_BASE &&
+        nodeNum <= QzssDcr::MICHIBIKI_NODE_NUM_BASE + QzssDcr::MAX_QZSS_SATELLITES) {
+        const NodeRecord *record = THIS->nodeRecord(nodeNum);
+        if (record) {
+            THIS->setNodeImage(nodeNum, static_cast<MeshtasticView::eRole>(record->user.role), record->unmessagable,
+                               objects.node_details_image);
+            lv_label_set_text(objects.node_details_name_label, THIS->nodeDisplayName(nodeNum));
+            lv_label_set_text(objects.node_details_name_short_label, THIS->nodeShortName(nodeNum));
+            lv_label_set_text(objects.node_details_battery_label, "");
+
+            QzssDcr::SatelliteReceptionStatus status{};
+            const uint8_t svId = static_cast<uint8_t>(nodeNum - QzssDcr::MICHIBIKI_NODE_NUM_BASE);
+            if (QzssDcr::getSatelliteReceptionStatus(svId, status)) {
+                char signalText[32] = {};
+                if (status.cno && status.hasL1S) {
+                    std::snprintf(signalText, sizeof(signalText), "C/N0 %u MT%u", static_cast<unsigned>(status.cno),
+                                  static_cast<unsigned>(status.messageType));
+                } else if (status.cno) {
+                    std::snprintf(signalText, sizeof(signalText), "C/N0 %u L1S —", static_cast<unsigned>(status.cno));
+                } else if (status.hasL1S) {
+                    std::snprintf(signalText, sizeof(signalText), "MT%u", static_cast<unsigned>(status.messageType));
+                } else {
+                    std::snprintf(signalText, sizeof(signalText), "L1S —");
+                }
+                lv_label_set_text(objects.node_details_signal_label, signalText);
+
+                char ageText[24] = {};
+                if (!status.hasL1S) {
+                    std::snprintf(ageText, sizeof(ageText), "L1S: —");
+                } else if (status.lastL1SAgeSeconds < 60) {
+                    std::snprintf(ageText, sizeof(ageText), "L1S: %us", static_cast<unsigned>(status.lastL1SAgeSeconds));
+                } else if (status.lastL1SAgeSeconds < 3600) {
+                    std::snprintf(ageText, sizeof(ageText), "L1S: %um", static_cast<unsigned>(status.lastL1SAgeSeconds / 60));
+                } else if (status.lastL1SAgeSeconds < 86400) {
+                    std::snprintf(ageText, sizeof(ageText), "L1S: %uh", static_cast<unsigned>(status.lastL1SAgeSeconds / 3600));
+                } else {
+                    std::snprintf(ageText, sizeof(ageText), "L1S: %ud", static_cast<unsigned>(status.lastL1SAgeSeconds / 86400));
+                }
+                lv_label_set_text(objects.node_details_last_heard_label, ageText);
+            }
+        }
+    } else {
+        lv_label_set_text_static(objects.node_details_name_label, "Meshtastic");
+        lv_label_set_text_static(objects.node_details_name_short_label, "ABCD");
+        lv_label_set_text_static(objects.node_details_battery_label, "100%");
+        lv_label_set_text_static(objects.node_details_last_heard_label, "now");
+        lv_label_set_text_static(objects.node_details_signal_label, "RSSI: 0.0 SNR: 0.0");
+    }
+#endif
     THIS->ui_set_active(objects.settings_button, objects.details_panel, objects.top_nodes_panel);
 }
 
@@ -6103,7 +6213,12 @@ void TFTView_320x240::ui_event_ok(lv_event_t *e)
             // the banner setting is not part of this dialog and stays untouched
             THIS->db.uiConfig.alert_enabled = alert_message;
             THIS->db.uiConfig.ring_tone_id = tone;
+#if defined(USE_I2S_BUZZER)
+            alertVolume = static_cast<uint8_t>(lv_slider_get_value(alertVolumeSlider));
+            sendAlertRingtone(THIS->controller, static_cast<uint8_t>(tone), THIS->ownNode);
+#else
             THIS->controller->sendConfig(ringtone[alert_message ? tone : 0].rtttl, THIS->ownNode);
+#endif
             THIS->setBellText(THIS->db.uiConfig.banner_enabled, THIS->db.uiConfig.alert_enabled);
             THIS->controller->storeUIConfig(THIS->db.uiConfig);
 
@@ -8162,10 +8277,24 @@ void TFTView_320x240::updateExtNotificationModule(const meshtastic_ModuleConfig_
 
 void TFTView_320x240::updateRingtone(const char rtttl[231])
 {
+#if defined(USE_I2S_BUZZER)
+    alertVolume = defaultAlertVolume;
+    if (const char *volumeMarker = std::strstr(rtttl, "~v=")) {
+        char *end = nullptr;
+        const long parsedVolume = std::strtol(volumeMarker + 3, &end, 10);
+        if (end != volumeMarker + 3)
+            alertVolume = static_cast<uint8_t>(std::clamp(parsedVolume, 0L, 100L));
+    }
+#endif
+
     // retrieving ringtone index for dropdown
     uint16_t rtIndex = 0;
+    const char *receivedNotes = std::strchr(rtttl, ':');
+    if (receivedNotes)
+        ++receivedNotes;
     for (int i = 0; i < numRingtones; i++) {
-        if (strncmp(ringtone[i].rtttl, rtttl, 16) == 0) {
+        const char *candidateNotes = std::strchr(ringtone[i].rtttl, ':');
+        if (receivedNotes && candidateNotes && std::strcmp(candidateNotes + 1, receivedNotes) == 0) {
             rtIndex = i;
             break;
         }

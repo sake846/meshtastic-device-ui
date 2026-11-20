@@ -316,6 +316,10 @@ static bool pagerMoveFocus(lv_group_t *group, int16_t diff)
     if (!group || !diff)
         return false;
 
+    lv_obj_t *focused = lv_group_get_focused(group);
+    if (focused && lv_obj_check_type(focused, &lv_dropdown_class) && lv_dropdown_is_open(focused))
+        return false;
+
     if (lv_screen_active() == objects.blank_screen)
         return true;
 

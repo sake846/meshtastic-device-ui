@@ -64,6 +64,19 @@ void formatLastHeard(uint32_t lastHeard, uint32_t currentTime, char *buffer, siz
     NodeListRowPresentation::formatLastHeardLabel(lastHeard, currentTime, _("now"), buffer, bufferSize);
 }
 
+void formatQzssAge(uint32_t ageSeconds, char *buffer, size_t bufferSize)
+{
+    if (ageSeconds < 60) {
+        std::snprintf(buffer, bufferSize, "%us", static_cast<unsigned>(ageSeconds));
+    } else if (ageSeconds < 3600) {
+        std::snprintf(buffer, bufferSize, "%um", static_cast<unsigned>(ageSeconds / 60));
+    } else if (ageSeconds < 86400) {
+        std::snprintf(buffer, bufferSize, "%uh", static_cast<unsigned>(ageSeconds / 3600));
+    } else {
+        std::snprintf(buffer, bufferSize, "%ud", static_cast<unsigned>(ageSeconds / 86400));
+    }
+}
+
 void formatShortName(const NodeRecord &record, const NodeListRenderContext &context, char *buffer, size_t bufferSize)
 {
     // Remote rows carry a distance line only when both positions are known.
@@ -889,9 +902,22 @@ void VirtualNodeList::bindRow(ReusableRow &row, const NodeRecord &record, bool i
     const uint32_t nodeNum = static_cast<uint32_t>(record.id);
     if (nodeNum > QzssDcr::MICHIBIKI_NODE_NUM_BASE &&
         nodeNum <= QzssDcr::MICHIBIKI_NODE_NUM_BASE + QzssDcr::MAX_QZSS_SATELLITES) {
-        uint8_t cno = 0;
-        if (QzssDcr::getLastSatelliteCno(static_cast<uint8_t>(nodeNum - QzssDcr::MICHIBIKI_NODE_NUM_BASE), cno)) {
-            std::snprintf(row.signalText, sizeof(row.signalText), "C/N0: %u dB-Hz", static_cast<unsigned>(cno));
+        QzssDcr::SatelliteReceptionStatus status{};
+        if (QzssDcr::getSatelliteReceptionStatus(static_cast<uint8_t>(nodeNum - QzssDcr::MICHIBIKI_NODE_NUM_BASE), status)) {
+            char ageText[8] = {};
+            if (status.hasL1S) {
+                formatQzssAge(status.lastL1SAgeSeconds, ageText, sizeof(ageText));
+                if (status.cno) {
+                    std::snprintf(row.signalText, sizeof(row.signalText), "C/N0 %u MT%u %s", static_cast<unsigned>(status.cno),
+                                  static_cast<unsigned>(status.messageType), ageText);
+                } else {
+                    std::snprintf(row.signalText, sizeof(row.signalText), "MT%u %s", static_cast<unsigned>(status.messageType), ageText);
+                }
+            } else if (status.cno) {
+                std::snprintf(row.signalText, sizeof(row.signalText), "C/N0 %u L1S —", static_cast<unsigned>(status.cno));
+            } else {
+                std::snprintf(row.signalText, sizeof(row.signalText), "L1S —");
+            }
             hasQzssSignal = true;
         }
     }
