@@ -3610,9 +3610,21 @@ void TFTView_320x240::ui_event_alert_button(lv_event_t *e)
             alertVolumeLabel = lv_label_create(objects.settings_alert_buzzer_panel);
             lv_obj_set_pos(alertVolumeLabel, 10, 64);
             alertVolumeSlider = lv_slider_create(objects.settings_alert_buzzer_panel);
-            lv_obj_set_pos(alertVolumeSlider, 20, 92);
-            lv_obj_set_size(alertVolumeSlider, 180, 18);
+            lv_obj_set_pos(alertVolumeSlider, LV_PCT(10), 92);
+            lv_obj_set_size(alertVolumeSlider, LV_PCT(80), 10);
             lv_slider_set_range(alertVolumeSlider, 0, 100);
+            lv_obj_set_style_bg_image_src(alertVolumeSlider, &img_knob_logo_image, LV_PART_KNOB | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_color(alertVolumeSlider, lv_color_hex(0x67ea94), LV_PART_KNOB | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_image_recolor(alertVolumeSlider, lv_color_hex(0x000000), LV_PART_KNOB | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_image_recolor_opa(alertVolumeSlider, 255, LV_PART_KNOB | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_color(alertVolumeSlider, lv_color_hex(0x436c70), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_grad_dir(alertVolumeSlider, LV_GRAD_DIR_HOR, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_grad_color(alertVolumeSlider, lv_color_hex(0xa8cacd), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+            lv_obj_set_style_border_color(alertVolumeSlider, lv_color_hex(0x67ea94), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+            lv_obj_set_style_border_width(alertVolumeSlider, 1, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_color(alertVolumeSlider, lv_color_hex(0x436c70), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_border_color(alertVolumeSlider, lv_color_hex(0x67ea94), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_border_width(alertVolumeSlider, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_add_flag(alertVolumeSlider, LV_OBJ_FLAG_EVENT_BUBBLE);
             lv_obj_add_event_cb(
                 alertVolumeSlider,
@@ -9235,14 +9247,16 @@ void TFTView_320x240::flushNodeListPresentation(void)
 {
     if (nodesChanged || processingFilter) {
         updateNodesFiltered(true);
-        return;
+    } else {
+        std::set<NodeId> refreshIds;
+        refreshIds.swap(nodeListPresentationRefreshIds);
+        for (NodeId id : refreshIds) {
+            refreshVirtualNodePresentation(id);
+        }
     }
 
-    std::set<NodeId> refreshIds;
-    refreshIds.swap(nodeListPresentationRefreshIds);
-    for (NodeId id : refreshIds) {
-        refreshVirtualNodePresentation(id);
-    }
+    if (activePanel == objects.nodes_panel && virtualNodeList)
+        virtualNodeList->refreshQzssRows();
 }
 
 void TFTView_320x240::syncNodeListPresentation(bool forceRebind)

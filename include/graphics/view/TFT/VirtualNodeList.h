@@ -128,6 +128,7 @@ class VirtualNodeList
 
     void refreshVisibleRows(bool force = false, bool rebind = false, bool reorder = true);
     bool refreshNode(NodeId id, uint32_t currentTime, const NodeListRenderContext &context);
+    void refreshQzssRows();
 
   private:
     struct ScrollAnchor {

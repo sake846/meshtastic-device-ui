@@ -1296,6 +1296,28 @@ bool VirtualNodeList::refreshNode(NodeId id, uint32_t now, const NodeListRenderC
     return false;
 }
 
+void VirtualNodeList::refreshQzssRows()
+{
+#if defined(HAS_QZSS_DCR)
+    if (!currentStore)
+        return;
+
+    for (auto &row : rowPool) {
+        if (!row.boundId || !row.panel || lv_obj_has_flag(row.panel, LV_OBJ_FLAG_HIDDEN))
+            continue;
+
+        const uint32_t nodeNum = static_cast<uint32_t>(row.boundId);
+        if (nodeNum <= QzssDcr::MICHIBIKI_NODE_NUM_BASE ||
+            nodeNum > QzssDcr::MICHIBIKI_NODE_NUM_BASE + QzssDcr::MAX_QZSS_SATELLITES)
+            continue;
+
+        const auto *record = currentStore->find(row.boundId);
+        if (record)
+            bindRow(row, *record, rowShowsExpandedDetails(row.boundId));
+    }
+#endif
+}
+
 void VirtualNodeList::scrollEventCallback(lv_event_t *e)
 {
     auto *self = static_cast<VirtualNodeList *>(lv_event_get_user_data(e));
