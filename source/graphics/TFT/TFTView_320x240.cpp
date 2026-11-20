@@ -3617,7 +3617,7 @@ void TFTView_320x240::ui_event_alert_button(lv_event_t *e)
             lv_obj_add_event_cb(
                 alertVolumeSlider,
                 [](lv_event_t *event) {
-                    auto *slider = lv_event_get_target(event);
+                    auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(event));
                     auto *label = static_cast<lv_obj_t *>(lv_event_get_user_data(event));
                     updateAlertVolumeLabel(label, lv_slider_get_value(slider));
                 },
