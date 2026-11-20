@@ -93,7 +93,16 @@ static bool pagerMoveNodeFocus(lv_group_t *group, int16_t diff)
     if (current < 0 || count == 0)
         return false;
 
-    int targetIndex = (current + diff % count + count) % count;
+    int targetIndex = current + diff;
+    if (lv_group_get_wrap(group)) {
+        targetIndex %= count;
+        if (targetIndex < 0)
+            targetIndex += count;
+    } else if (targetIndex < 0) {
+        targetIndex = 0;
+    } else if (targetIndex >= count) {
+        targetIndex = count - 1;
+    }
     for (uint32_t i = 0; i < lv_obj_get_child_count(objects.nodes_panel); ++i) {
         lv_obj_t *button = pagerNodeButtonInRow(group, lv_obj_get_child(objects.nodes_panel, i));
         if (!button)
@@ -232,9 +241,14 @@ static void pagerFocusContentStep(lv_group_t *group, int direction)
         current = direction > 0 ? -1 : 0;
 
     for (uint32_t step = 1; step <= count; ++step) {
-        int index = (current + direction * static_cast<int>(step)) % static_cast<int>(count);
-        if (index < 0)
-            index += static_cast<int>(count);
+        int index = current + direction * static_cast<int>(step);
+        if (lv_group_get_wrap(group)) {
+            index %= static_cast<int>(count);
+            if (index < 0)
+                index += static_cast<int>(count);
+        } else if (index < 0 || index >= static_cast<int>(count)) {
+            break;
+        }
         lv_obj_t *candidate = lv_group_get_obj_by_index(group, static_cast<uint32_t>(index));
         if (!candidate || (lv_obj_get_state(candidate) & LV_STATE_DISABLED) ||
             pagerMenuButtonIndex(candidate) >= 0 || !pagerFocusTargetAvailable(candidate))
@@ -300,6 +314,10 @@ bool pagerHandleBack(lv_indev_t *indev)
 static bool pagerMoveFocus(lv_group_t *group, int16_t diff)
 {
     if (!group || !diff)
+        return false;
+
+    lv_obj_t *focused = lv_group_get_focused(group);
+    if (focused && lv_obj_check_type(focused, &lv_dropdown_class) && lv_dropdown_is_open(focused))
         return false;
 
     if (lv_screen_active() == objects.blank_screen)

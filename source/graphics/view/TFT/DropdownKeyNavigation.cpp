@@ -45,6 +45,9 @@ void handleKey(lv_event_t *e, lv_obj_t *dropdown)
     const bool open = lv_dropdown_is_open(dropdown);
     POLICY_DEBUG("[DropdownKeyNavigation] handleKey 0x%04x", key & 0xFFFF);
     if (key == LV_KEY_LEFT || key == LV_KEY_RIGHT) {
+        lv_indev_t *indev = lv_indev_active();
+        if (open && indev && lv_indev_get_type(indev) == LV_INDEV_TYPE_ENCODER)
+            return;
         // LVGL treats LEFT/RIGHT like UP/DOWN: they would open the list or move its selection
         lv_event_stop_processing(e);
         // stop_processing also ends bubbling, so pass a closed dropdown's key on as if it bubbled

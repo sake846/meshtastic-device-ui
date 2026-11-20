@@ -46,6 +46,7 @@ extern void pagerSetActiveMenuButton(lv_obj_t *button);
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <iomanip>
@@ -54,6 +55,36 @@ extern void pagerSetActiveMenuButton(lv_obj_t *button);
 #include <random>
 #include <sstream>
 #include <time.h>
+
+#if defined(USE_I2S_BUZZER)
+static constexpr uint8_t defaultAlertVolume = 20;
+static uint8_t alertVolume = defaultAlertVolume;
+static lv_obj_t *alertVolumeSlider = nullptr;
+static lv_obj_t *alertVolumeLabel = nullptr;
+
+static void updateAlertVolumeLabel(lv_obj_t *label, int volume)
+{
+    char text[32];
+    lv_snprintf(text, sizeof(text), _("Volume: %d%%"), volume);
+    lv_label_set_text(label, text);
+}
+
+static void sendAlertRingtone(ViewController *controller, uint8_t tone, uint32_t nodeId)
+{
+    const char *rtttl = ringtone[tone].rtttl;
+    const char *colon = std::strchr(rtttl, ':');
+    if (!colon) {
+        controller->sendConfig(rtttl, nodeId);
+        return;
+    }
+
+    char ringtoneWithVolume[231];
+    const int length = std::snprintf(ringtoneWithVolume, sizeof(ringtoneWithVolume), "%.*s~v=%u%s",
+                                     static_cast<int>(colon - rtttl), rtttl, static_cast<unsigned>(alertVolume), colon);
+    controller->sendConfig(length >= 0 && static_cast<size_t>(length) < sizeof(ringtoneWithVolume) ? ringtoneWithVolume : rtttl,
+                           nodeId);
+}
+#endif
 
 #if defined(_WIN32)
 static const char *strcasestr(const char *haystack, const char *needle)
@@ -999,6 +1030,7 @@ void TFTView_320x240::showActivePanel(lv_obj_t *b, lv_obj_t *p, lv_obj_t *tp)
             virtualNodeListInputVisibilityKnown = false;
         }
         if (activePanel == objects.messages_panel) {
+            lv_group_set_wrap(defaultPanelGroup, defaultPanelGroupWrapBeforeChat);
             lv_obj_remove_state(objects.message_input_area, LV_STATE_FOCUSED);
             resetKeyboardSlide();
             uint32_t channelOrNode = (uintptr_t)activeMsgContainer->user_data;
@@ -1021,8 +1053,11 @@ void TFTView_320x240::showActivePanel(lv_obj_t *b, lv_obj_t *p, lv_obj_t *tp)
     }
 
     lv_obj_remove_flag(p, LV_OBJ_FLAG_HIDDEN);
-    if (p == objects.messages_panel)
+    if (p == objects.messages_panel) {
+        defaultPanelGroupWrapBeforeChat = lv_group_get_wrap(defaultPanelGroup);
+        lv_group_set_wrap(defaultPanelGroup, false);
         renderChat(activeMsgContainer);
+    }
     if (p == objects.nodes_panel) {
         ensureVirtualNodeList();
     } else if (p == objects.map_panel && !displaydriver->hasTouch()) {
@@ -2702,8 +2737,19 @@ void TFTView_320x240::ui_event_BellButton(lv_event_t *e)
     auto applyBellState = []() {
         if (THIS->db.uiConfig.ring_tone_id == 0)
             THIS->db.uiConfig.ring_tone_id = 1;
+#if defined(USE_I2S_BUZZER)
+        sendAlertRingtone(THIS->controller, static_cast<uint8_t>(THIS->db.uiConfig.ring_tone_id), THIS->ownNode);
+#else
         const uint32_t tone = THIS->db.uiConfig.alert_enabled ? THIS->db.uiConfig.ring_tone_id : 0;
         THIS->controller->sendConfig(ringtone[tone].rtttl, THIS->ownNode);
+#endif
+        if (THIS->db.module_config.has_external_notification) {
+            auto &notification = THIS->db.module_config.external_notification;
+            if (notification.alert_message_buzzer != THIS->db.uiConfig.alert_enabled) {
+                notification.alert_message_buzzer = THIS->db.uiConfig.alert_enabled;
+                THIS->controller->sendConfig(meshtastic_ModuleConfig_ExternalNotificationConfig{notification}, THIS->ownNode);
+            }
+        }
         THIS->setBellText(THIS->db.uiConfig.banner_enabled, THIS->db.uiConfig.alert_enabled);
         THIS->controller->storeUIConfig(THIS->db.uiConfig);
     };
@@ -3099,11 +3145,10 @@ void TFTView_320x240::ui_event_Keyboard(lv_event_t *e)
 void TFTView_320x240::ui_event_message_ready(lv_event_t *e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
+    if (THIS && THIS->evacuatingChatFocus)
+        return;
     ILOG_DEBUG("ui_event_message_ready: event_code=%d", event_code);
     if (event_code == LV_EVENT_FOCUSED) {
-        // Ignore internal focus evacuation so it does not hijack the active group or edit state.
-        if (THIS && THIS->evacuatingChatFocus)
-            return;
         if (THIS && THIS->defaultPanelGroup)
             THIS->setInputGroup(THIS->defaultPanelGroup);
         TextareaEditContext::focus(lv_event_get_target_obj(e));
@@ -3453,6 +3498,42 @@ void TFTView_320x240::ui_event_alert_button(lv_event_t *e)
         }
 
         lv_dropdown_set_selected(objects.settings_ringtone_dropdown, THIS->db.uiConfig.ring_tone_id - 1);
+#if defined(USE_I2S_BUZZER)
+        if (!alertVolumeSlider) {
+            lv_obj_set_height(objects.settings_alert_buzzer_panel, 180);
+            alertVolumeLabel = lv_label_create(objects.settings_alert_buzzer_panel);
+            lv_obj_set_pos(alertVolumeLabel, 10, 64);
+            alertVolumeSlider = lv_slider_create(objects.settings_alert_buzzer_panel);
+            lv_obj_set_pos(alertVolumeSlider, LV_PCT(10), 92);
+            lv_obj_set_size(alertVolumeSlider, LV_PCT(80), 10);
+            lv_slider_set_range(alertVolumeSlider, 0, 100);
+            lv_obj_set_style_bg_image_src(alertVolumeSlider, &img_knob_logo_image, LV_PART_KNOB | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_color(alertVolumeSlider, lv_color_hex(0x67ea94), LV_PART_KNOB | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_image_recolor(alertVolumeSlider, lv_color_hex(0x000000), LV_PART_KNOB | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_image_recolor_opa(alertVolumeSlider, 255, LV_PART_KNOB | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_color(alertVolumeSlider, lv_color_hex(0x436c70), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_grad_dir(alertVolumeSlider, LV_GRAD_DIR_HOR, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_grad_color(alertVolumeSlider, lv_color_hex(0xa8cacd), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+            lv_obj_set_style_border_color(alertVolumeSlider, lv_color_hex(0x67ea94), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+            lv_obj_set_style_border_width(alertVolumeSlider, 1, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_color(alertVolumeSlider, lv_color_hex(0x436c70), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_border_color(alertVolumeSlider, lv_color_hex(0x67ea94), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_border_width(alertVolumeSlider, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_add_flag(alertVolumeSlider, LV_OBJ_FLAG_EVENT_BUBBLE);
+            lv_obj_add_event_cb(
+                alertVolumeSlider,
+                [](lv_event_t *event) {
+                    auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(event));
+                    auto *label = static_cast<lv_obj_t *>(lv_event_get_user_data(event));
+                    updateAlertVolumeLabel(label, lv_slider_get_value(slider));
+                },
+                LV_EVENT_VALUE_CHANGED, alertVolumeLabel);
+            if (lv_group_t *group = lv_obj_get_group(objects.settings_ringtone_dropdown))
+                lv_group_add_obj(group, alertVolumeSlider);
+        }
+        lv_slider_set_value(alertVolumeSlider, alertVolume, LV_ANIM_OFF);
+        updateAlertVolumeLabel(alertVolumeLabel, alertVolume);
+#endif
         lv_obj_remove_flag(objects.settings_alert_buzzer_panel, LV_OBJ_FLAG_HIDDEN);
         lv_group_focus_obj(objects.settings_alert_buzzer_switch);
         THIS->disablePanel(objects.controller_panel);
@@ -5979,12 +6060,20 @@ void TFTView_320x240::ui_event_ok(lv_event_t *e)
                 }
                 THIS->notifyReboot(true);
                 THIS->controller->sendConfig(meshtastic_ModuleConfig_ExternalNotificationConfig{config}, THIS->ownNode);
+            } else if (!alert_message && config.alert_message_buzzer) {
+                config.alert_message_buzzer = false;
+                THIS->controller->sendConfig(meshtastic_ModuleConfig_ExternalNotificationConfig{config}, THIS->ownNode);
             }
 
             // the banner setting is not part of this dialog and stays untouched
             THIS->db.uiConfig.alert_enabled = alert_message;
             THIS->db.uiConfig.ring_tone_id = tone;
+#if defined(USE_I2S_BUZZER)
+            alertVolume = static_cast<uint8_t>(lv_slider_get_value(alertVolumeSlider));
+            sendAlertRingtone(THIS->controller, static_cast<uint8_t>(tone), THIS->ownNode);
+#else
             THIS->controller->sendConfig(ringtone[alert_message ? tone : 0].rtttl, THIS->ownNode);
+#endif
             THIS->setBellText(THIS->db.uiConfig.banner_enabled, THIS->db.uiConfig.alert_enabled);
             THIS->controller->storeUIConfig(THIS->db.uiConfig);
 
@@ -6382,15 +6471,8 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
 
     lv_obj_t *textLabel = lv_label_create(hiddenPanel);
     lv_group_add_obj(defaultPanelGroup, textLabel);
-    // calculate expected size of text bubble, to make it look nicer
-#if LV_VERSION_CHECK(9, 5, 0)
-    lv_text_attributes_t attributes = {0};
-    lv_coord_t width = lv_text_get_width(buf, strlen(buf), &ui_font_montserrat_14, &attributes);
-#else
-    lv_coord_t width = lv_text_get_width(buf, strlen(buf), &ui_font_montserrat_14, LV_TEXT_FLAG_NONE);
-#endif
-    lv_obj_set_width(textLabel, entry.sent ? std::max<int32_t>(std::min<int32_t>((int32_t)width + 10, 200) + 10, 50)
-                                           : std::max<int32_t>(std::min<int32_t>((int32_t)width, 160) + 10, 45));
+    lv_obj_set_width(textLabel, LV_SIZE_CONTENT);
+    lv_obj_set_style_max_width(textLabel, lv_pct(80), LV_PART_MAIN);
     lv_obj_set_height(textLabel, LV_SIZE_CONTENT);
     lv_obj_set_y(textLabel, 0);
     lv_obj_set_align(textLabel, entry.sent ? LV_ALIGN_RIGHT_MID : LV_ALIGN_LEFT_MID);
@@ -6452,6 +6534,26 @@ void TFTView_320x240::evacuateChatFocus(lv_obj_t *target, bool suppressFocusEffe
     }
 }
 
+void TFTView_320x240::placeMessageInputAfterChat(lv_obj_t *container)
+{
+    if (container != activeMsgContainer || !defaultPanelGroup ||
+        lv_obj_get_group(objects.message_input_area) != defaultPanelGroup)
+        return;
+
+    const uint32_t count = lv_group_get_obj_count(defaultPanelGroup);
+    if (!count || lv_group_get_obj_by_index(defaultPanelGroup, count - 1) == objects.message_input_area)
+        return;
+
+    const bool inputFocused = lv_group_get_focused(defaultPanelGroup) == objects.message_input_area;
+    const bool previousSuppress = evacuatingChatFocus;
+    evacuatingChatFocus = true;
+    lv_group_remove_obj(objects.message_input_area);
+    lv_group_add_obj(defaultPanelGroup, objects.message_input_area);
+    if (inputFocused)
+        lv_group_focus_obj(objects.message_input_area);
+    evacuatingChatFocus = previousSuppress;
+}
+
 void TFTView_320x240::appendChatEntry(lv_obj_t *container, ChatHistory::Entry entry)
 {
     auto &history = chatHistories[container];
@@ -6476,6 +6578,7 @@ void TFTView_320x240::appendChatEntry(lv_obj_t *container, ChatHistory::Entry en
         lv_obj_delete(oldest);
     }
     auto *newest = createChatBubble(container, history.at(history.last() - 1));
+    placeMessageInputAfterChat(container);
     lv_obj_scroll_to_view(newest, LV_ANIM_ON);
     history.scrollY = INT32_MAX;
     updatingChat = false;
@@ -6521,6 +6624,7 @@ void TFTView_320x240::renderChat(lv_obj_t *container, bool follow, size_t previo
     lv_obj_clean(container);
     for (size_t index = history.first(); index < history.last(); ++index)
         createChatBubble(container, history.at(index));
+    placeMessageInputAfterChat(container);
     lv_obj_update_layout(container);
     if ((follow || scroll == INT32_MAX) && lv_obj_get_child_count(container))
         lv_obj_scroll_to_view(lv_obj_get_child(container, -1), LV_ANIM_OFF);
@@ -8012,6 +8116,11 @@ void TFTView_320x240::updateExtNotificationModule(const meshtastic_ModuleConfig_
 {
     db.module_config.external_notification = cfg;
     db.module_config.has_external_notification = true;
+    if (!db.uiConfig.alert_enabled && db.module_config.external_notification.alert_message_buzzer) {
+        db.module_config.external_notification.alert_message_buzzer = false;
+        controller->sendConfig(meshtastic_ModuleConfig_ExternalNotificationConfig{db.module_config.external_notification},
+                               ownNode);
+    }
 
     char buf[32];
     lv_snprintf(buf, sizeof(buf), _("Message Alert: %s"),
@@ -8023,10 +8132,24 @@ void TFTView_320x240::updateExtNotificationModule(const meshtastic_ModuleConfig_
 
 void TFTView_320x240::updateRingtone(const char rtttl[231])
 {
+#if defined(USE_I2S_BUZZER)
+    alertVolume = defaultAlertVolume;
+    if (const char *volumeMarker = std::strstr(rtttl, "~v=")) {
+        char *end = nullptr;
+        const long parsedVolume = std::strtol(volumeMarker + 3, &end, 10);
+        if (end != volumeMarker + 3)
+            alertVolume = static_cast<uint8_t>(std::clamp(parsedVolume, 0L, 100L));
+    }
+#endif
+
     // retrieving ringtone index for dropdown
     uint16_t rtIndex = 0;
+    const char *receivedNotes = std::strchr(rtttl, ':');
+    if (receivedNotes)
+        ++receivedNotes;
     for (int i = 0; i < numRingtones; i++) {
-        if (strncmp(ringtone[i].rtttl, rtttl, 16) == 0) {
+        const char *candidateNotes = std::strchr(ringtone[i].rtttl, ':');
+        if (receivedNotes && candidateNotes && std::strcmp(candidateNotes + 1, receivedNotes) == 0) {
             rtIndex = i;
             break;
         }
@@ -8400,6 +8523,10 @@ void TFTView_320x240::notifyMessagesRestored(void)
 {
     MeshtasticView::notifyMessagesRestored();
     lv_obj_add_flag(objects.msg_restore_panel, LV_OBJ_FLAG_HIDDEN);
+    for (uint8_t ch = 0; ch < c_max_channels; ++ch) {
+        if (db.channel[ch].has_settings && db.channel[ch].role != meshtastic_Channel_Role_DISABLED)
+            newMessageContainer(0, UINT32_MAX, ch);
+    }
     updateActiveChats();
     updateNodesFiltered(true);
 }

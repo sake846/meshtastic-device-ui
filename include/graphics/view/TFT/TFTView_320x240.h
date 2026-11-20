@@ -384,6 +384,7 @@ class TFTView_320x240 : public MeshtasticView, private NodeListActionSink
     void renderChat(lv_obj_t *container, bool follow = false, size_t previousFirst = SIZE_MAX);
     void updateChatStatus(uint32_t channelOrNode, uint32_t requestId, LogMessage::MsgStatus status);
     void textMessageStatus(uint32_t requestId, LogMessage::MsgStatus status) override;
+    void placeMessageInputAfterChat(lv_obj_t *container);
     void hideChat(lv_obj_t *container);
     bool isDefaultPanelGroupActive(void) const;
     void evacuateChatFocus(lv_obj_t *target, bool suppressFocusEffects);
@@ -545,6 +546,7 @@ class TFTView_320x240 : public MeshtasticView, private NodeListActionSink
     lv_obj_t *activeMsgContainer = nullptr;
     std::unordered_map<lv_obj_t *, ChatHistory> chatHistories;
     bool updatingChat = false;
+    bool defaultPanelGroupWrapBeforeChat = true;
     bool evacuatingChatFocus = false;
     bool blankedFromLockScreen = false;
     bool pendingFocusRestoreOnMainLoad = false;
