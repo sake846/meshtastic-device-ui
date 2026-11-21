@@ -6744,6 +6744,7 @@ void TFTView_320x240::appendChatEntry(lv_obj_t *container, ChatHistory::Entry en
     }
     auto *newest = createChatBubble(container, history.at(history.last() - 1));
     placeMessageInputAfterChat(container);
+    lv_obj_update_layout(container);
     lv_obj_scroll_to_view(newest, LV_ANIM_ON);
     history.scrollY = INT32_MAX;
     updatingChat = false;
