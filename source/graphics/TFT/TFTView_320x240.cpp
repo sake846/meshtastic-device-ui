@@ -3640,6 +3640,21 @@ void TFTView_320x240::ui_event_alert_button(lv_event_t *e)
         lv_slider_set_value(alertVolumeSlider, alertVolume, LV_ANIM_OFF);
         updateAlertVolumeLabel(alertVolumeLabel, alertVolume);
 #endif
+        if (lv_group_t *group = lv_obj_get_group(objects.settings_ringtone_dropdown)) {
+            lv_obj_t *focusOrder[] = {
+                objects.settings_alert_buzzer_switch,
+                objects.settings_ringtone_dropdown,
+#if defined(USE_I2S_BUZZER)
+                alertVolumeSlider,
+#endif
+                objects.obj15__ok_button_w,
+                objects.obj15__cancel_button_w,
+            };
+            for (lv_obj_t *obj : focusOrder)
+                lv_group_remove_obj(obj);
+            for (lv_obj_t *obj : focusOrder)
+                lv_group_add_obj(group, obj);
+        }
         lv_obj_remove_flag(objects.settings_alert_buzzer_panel, LV_OBJ_FLAG_HIDDEN);
         lv_group_focus_obj(objects.settings_alert_buzzer_switch);
         THIS->disablePanel(objects.controller_panel);
