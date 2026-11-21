@@ -7,6 +7,7 @@
 #include "UptimeClock.h"
 #endif
 #include <algorithm>
+#include <cstdint>
 #include <utility>
 
 #if defined(ARCH_PORTDUINO)
@@ -19,6 +20,32 @@ fs::FS &persistentFS = LittleFS;
 
 const size_t DATA_PAYLOAD_LEN = meshtastic_Constants_DATA_PAYLOAD_LEN;
 constexpr const char *logDir = "/messages";
+
+namespace {
+constexpr uint32_t duplicateMessageWindowSeconds = 60 * 60;
+
+uint64_t messageFingerprint(const LogMessageEnv &message)
+{
+    uint64_t hash = 14695981039346656037ULL;
+    const auto addByte = [&hash](uint8_t byte) {
+        hash = (hash ^ byte) * 1099511628211ULL;
+    };
+    for (unsigned shift = 0; shift < 32; shift += 8)
+        addByte(static_cast<uint8_t>(message.from >> shift));
+    addByte(message.ch);
+    addByte(static_cast<uint8_t>(message._size));
+    addByte(static_cast<uint8_t>(message._size >> 8));
+    for (uint16_t i = 0; i < message._size; ++i)
+        addByte(message.bytes[i]);
+    return hash;
+}
+
+bool withinDuplicateWindow(uint32_t first, uint32_t second)
+{
+    const uint32_t delta = first > second ? first - second : second - first;
+    return delta <= duplicateMessageWindowSeconds;
+}
+} // namespace
 
 /**
  * @brief mediate between GUI view and client interface
@@ -692,6 +719,11 @@ void ViewController::restoreTextMessages(void)
             ILOG_WARN("skipping stored message with invalid channel %d", (int)msg.ch);
             return;
         }
+        time_t now;
+        time(&now);
+        if (now > 0 && msg.time > 0 && msg.time <= UINT32_MAX &&
+            withinDuplicateWindow(static_cast<uint32_t>(now), static_cast<uint32_t>(msg.time)))
+            isRecentDuplicate(msg, static_cast<uint32_t>(msg.time));
         msgCounter++;
         msgTotalSize += msg.size();
         view->restoreMessage(msg);
@@ -704,6 +736,26 @@ void ViewController::restoreTextMessages(void)
         messageLog.start();
         view->notifyMessagesRestored();
     }
+}
+
+bool ViewController::isRecentDuplicate(const LogMessageEnv &message, uint32_t receivedAt)
+{
+    if (!receivedAt)
+        return false;
+
+    recentMessages.erase(std::remove_if(recentMessages.begin(), recentMessages.end(), [receivedAt](const RecentMessage &item) {
+                             return !withinDuplicateWindow(item.receivedAt, receivedAt);
+                         }),
+                         recentMessages.end());
+    const uint64_t fingerprint = messageFingerprint(message);
+    const auto duplicate = std::find_if(recentMessages.begin(), recentMessages.end(), [fingerprint](const RecentMessage &item) {
+        return item.fingerprint == fingerprint;
+    });
+    if (duplicate != recentMessages.end())
+        return true;
+
+    recentMessages.push_back({fingerprint, receivedAt});
+    return false;
 }
 
 /**
@@ -1003,7 +1055,13 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
     case meshtastic_PortNum_DETECTION_SENSOR_APP:
     case meshtastic_PortNum_TEXT_MESSAGE_APP:
     case meshtastic_PortNum_RANGE_TEST_APP: {
-        ILOG_INFO("received text message '%s'", (const char *)p.decoded.payload.bytes);
+        char messageText[messagePayloadSize + 1] = {};
+        const size_t messageLength = std::min<size_t>(p.decoded.payload.size, messagePayloadSize);
+        for (size_t i = 0; i < messageLength; ++i) {
+            const char character = static_cast<char>(p.decoded.payload.bytes[i]);
+            messageText[i] = character == '\r' || character == '\n' ? ' ' : character;
+        }
+        ILOG_INFO("received text message '%s'", messageText);
         if (!messagesRestored && log.count() > 0) {
             // houston we have a problem! Haven't finished restoring messages incrementally while new ones come in
             if (!configCompleted) {
@@ -1014,14 +1072,16 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
                 ILOG_ERROR("WTF!? how did we get here??");
             }
         }
-        uint32_t time = p.rx_time;
         if (p.channel >= c_max_channels) {
             ILOG_WARN("ignoring message with invalid channel %d", (int)p.channel);
             break;
         }
-        view->newMessage(p.from, p.to, p.channel, (const char *)p.decoded.payload.bytes, time);
-        if (!messageLog.append(std::make_unique<LogMessageEnv>(p.from, p.to, p.channel, time, LogMessage::eDefault, false,
-                                                               p.decoded.payload.size, p.decoded.payload.bytes)))
+        auto message = std::make_unique<LogMessageEnv>(p.from, p.to, p.channel, receivedAt, LogMessage::eDefault, false,
+                                                       p.decoded.payload.size, p.decoded.payload.bytes);
+        if (isRecentDuplicate(*message, receivedAt))
+            break;
+        view->newMessage(p.from, p.to, p.channel, (const char *)p.decoded.payload.bytes, receivedAt);
+        if (!messageLog.append(std::move(message)))
             ILOG_ERROR("Message log is shutting down; incoming message not persisted");
         break;
     }

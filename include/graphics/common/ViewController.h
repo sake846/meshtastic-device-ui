@@ -3,7 +3,9 @@
 #include "comms/IClientBase.h"
 #include "util/AsyncMessageLog.h"
 #include "util/LogRotate.h"
+#include <cstdint>
 #include <time.h>
+#include <vector>
 
 class MeshtasticView;
 
@@ -112,6 +114,12 @@ class ViewController
     MeshtasticView *view;
     LogRotate log;
     AsyncMessageLog messageLog;
+    struct RecentMessage {
+        uint64_t fingerprint;
+        uint32_t receivedAt;
+    };
+    bool isRecentDuplicate(const LogMessageEnv &message, uint32_t receivedAt);
+    std::vector<RecentMessage> recentMessages;
     IClientBase *client;
     uint32_t sendId;
     uint32_t myNodeNum;
