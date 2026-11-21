@@ -2673,16 +2673,25 @@ void TFTView_320x240::ui_event_ChatButton(lv_event_t *e)
     static bool ignoreClicked = false;
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t *target = lv_event_get_target_obj(e);
+    if (target != lv_event_get_current_target_obj(e)) {
+        return;
+    }
     lv_obj_t *delBtn = target->LV_OBJ_IDX(1);
-    if (event_code == LV_EVENT_LONG_PRESSED) {
+    if (event_code == LV_EVENT_PRESSED) {
+        ignoreClicked = false;
+    } else if (event_code == LV_EVENT_LONG_PRESSED) {
         ignoreClicked = true;
-        lv_obj_t *delBtn = target->LV_OBJ_IDX(1);
         lv_obj_remove_flag(delBtn, LV_OBJ_FLAG_HIDDEN);
     } else if ((event_code == LV_EVENT_DEFOCUSED || event_code == LV_EVENT_LEAVE)) {
         lv_obj_add_flag(delBtn, LV_OBJ_FLAG_HIDDEN);
+        ignoreClicked = false;
     } else if (event_code == LV_EVENT_CLICKED) {
-        if (ignoreClicked) { // prevent long press to enter this setting
+        if (ignoreClicked) { // prevent the long-press release from selecting the chat
             ignoreClicked = false;
+            return;
+        }
+        if (!lv_obj_has_flag(delBtn, LV_OBJ_FLAG_HIDDEN)) {
+            lv_obj_send_event(delBtn, LV_EVENT_CLICKED, nullptr);
             return;
         }
         lv_obj_set_style_border_color(target, colorMidGray, LV_PART_MAIN);
@@ -9392,6 +9401,18 @@ void TFTView_320x240::nodeLongPressed(NodeId id)
     if (nodeIsMessagable(id)) {
         showMessages(id);
     }
+}
+
+void TFTView_320x240::nodeDeleteRequested(NodeId id)
+{
+    if (!id || id == ownNode || !nodeStore.find(id)) {
+        return;
+    }
+    if (currentNode == id) {
+        selectNode(0);
+    }
+    removeNode(id);
+    syncNodeListPresentation(true);
 }
 
 void TFTView_320x240::nodeFocusBoundary(bool forward)

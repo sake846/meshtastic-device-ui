@@ -14,6 +14,7 @@ class NodeListActionSink
   public:
     virtual void nodeClicked(NodeId id) = 0;
     virtual void nodeLongPressed(NodeId id) = 0;
+    virtual void nodeDeleteRequested(NodeId id) { (void)id; }
     virtual void nodeFocusBoundary(bool forward) {}
     virtual void nodePositionClicked(NodeId id) {}
     virtual ~NodeListActionSink() = default;
@@ -45,6 +46,7 @@ struct ReusableRow {
     lv_obj_t *lblPos2 = nullptr;
     lv_obj_t *lblTm1 = nullptr;
     lv_obj_t *lblTm2 = nullptr;
+    lv_obj_t *lblDelete = nullptr;
     char shortText[32]{};
     char longText[40]{};
     char batteryText[32]{};
@@ -56,6 +58,8 @@ struct ReusableRow {
     char telemetry2Text[48]{};
     NodeId boundId = 0;
     NodeId pressedId = 0;
+    bool deleteArmed = false;
+    bool suppressArmClick = false;
     int32_t renderedY = std::numeric_limits<int32_t>::min();
     int32_t renderedHeight = std::numeric_limits<int32_t>::min();
 

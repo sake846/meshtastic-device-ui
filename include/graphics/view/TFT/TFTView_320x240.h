@@ -333,6 +333,7 @@ class TFTView_320x240 : public MeshtasticView, private NodeListActionSink
     bool refreshVirtualNodePresentation(NodeId id);
     void nodeClicked(NodeId id) override;
     void nodeLongPressed(NodeId id) override;
+    void nodeDeleteRequested(NodeId id) override;
     void nodeFocusBoundary(bool forward) override;
     void nodePositionClicked(NodeId id) override;
     void updateGroupChannel(uint8_t chId);

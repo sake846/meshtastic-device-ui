@@ -102,6 +102,11 @@ void clearRowBinding(ReusableRow &row)
 {
     row.boundId = 0;
     row.pressedId = 0;
+    row.deleteArmed = false;
+    row.suppressArmClick = false;
+    if (row.lblDelete) {
+        setHidden(row.lblDelete, true);
+    }
     row.detailKeysValid = false;
     if (row.panel) {
         lv_obj_set_user_data(row.panel, nullptr);
@@ -360,6 +365,20 @@ void VirtualNodeList::createRowPool()
         lv_obj_set_style_align(row.lblTm2, LV_ALIGN_TOP_RIGHT, LV_PART_MAIN);
         lv_obj_set_style_text_align(row.lblTm2, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
         lv_obj_add_flag(row.lblTm2, LV_OBJ_FLAG_HIDDEN);
+
+        row.lblDelete = lv_label_create(row.panel);
+        lv_obj_set_size(row.lblDelete, 40, 23);
+        lv_obj_set_align(row.lblDelete, LV_ALIGN_TOP_RIGHT);
+        lv_obj_set_pos(row.lblDelete, 0, 1);
+        lv_label_set_text(row.lblDelete, _("DEL"));
+        lv_obj_remove_flag(row.lblDelete, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_bg_color(row.lblDelete, lv_color_hex(0x9b1c1c), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(row.lblDelete, 255, LV_PART_MAIN);
+        lv_obj_set_style_text_color(row.lblDelete, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_align(row.lblDelete, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_set_style_radius(row.lblDelete, 4, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(row.lblDelete, 2, LV_PART_MAIN);
+        lv_obj_add_flag(row.lblDelete, LV_OBJ_FLAG_HIDDEN);
 
         lv_label_set_text_static(row.lblShort, row.shortText);
         lv_label_set_text_static(row.lblLong, row.longText);
@@ -843,6 +862,11 @@ void VirtualNodeList::handleGroupEdge(bool forward)
 
 void VirtualNodeList::bindRow(ReusableRow &row, const NodeRecord &record, bool isExpanded)
 {
+    if (row.boundId != record.id) {
+        row.deleteArmed = false;
+        row.suppressArmClick = false;
+        setHidden(row.lblDelete, true);
+    }
     row.boundId = record.id;
     lv_obj_set_user_data(row.panel, reinterpret_cast<void *>(static_cast<uintptr_t>(record.id)));
     lv_obj_set_user_data(row.btn, reinterpret_cast<void *>(static_cast<uintptr_t>(record.id)));
@@ -1347,21 +1371,43 @@ void VirtualNodeList::rowClickCallback(lv_event_t *e)
 
     const lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSED) {
+        if (row->deleteArmed) {
+            row->suppressArmClick = false;
+        }
         row->pressedId = row->boundId;
     } else if (code == LV_EVENT_PRESS_LOST || code == LV_EVENT_CANCEL) {
         row->pressedId = 0;
     } else if (code == LV_EVENT_CLICKED) {
         const NodeId id = row->pressedId ? row->pressedId : row->boundId;
         row->pressedId = 0;
+        if (row->deleteArmed) {
+            if (row->suppressArmClick) {
+                row->suppressArmClick = false;
+                return;
+            }
+            row->deleteArmed = false;
+            setHidden(row->lblDelete, true);
+            if (id != 0 && id == row->boundId) {
+                self->actionSink.nodeDeleteRequested(id);
+            }
+            return;
+        }
         if (id != 0 && !self->expansionAnimating()) {
             self->actionSink.nodeClicked(id);
         }
     } else if (code == LV_EVENT_LONG_PRESSED) {
         const NodeId id = row->pressedId ? row->pressedId : row->boundId;
         row->pressedId = 0;
-        if (id != 0) {
-            self->actionSink.nodeLongPressed(id);
+        if (id != 0 && id != self->renderContext.ownNode) {
+            row->deleteArmed = true;
+            row->suppressArmClick = true;
+            setHidden(row->lblDelete, false);
         }
+    } else if (code == LV_EVENT_DEFOCUSED || code == LV_EVENT_LEAVE) {
+        row->deleteArmed = false;
+        row->suppressArmClick = false;
+        setHidden(row->lblDelete, true);
+        row->pressedId = 0;
     } else if (code == LV_EVENT_FOCUSED) {
         const NodeId id = row->boundId;
         if (id != 0) {
