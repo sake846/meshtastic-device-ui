@@ -8,7 +8,10 @@
 #endif
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
+#include <memory>
 #include <utility>
+#include <vector>
 
 #if defined(ARCH_PORTDUINO)
 #include "PortduinoFS.h"
@@ -45,6 +48,47 @@ bool withinDuplicateWindow(uint32_t first, uint32_t second)
     const uint32_t delta = first > second ? first - second : second - first;
     return delta <= duplicateMessageWindowSeconds;
 }
+
+bool isQzssChatMessage(const uint8_t *text, size_t size)
+{
+    static constexpr const char *prefixes[] = {"みちびき災危通報", "みちびきDCX", "（続き）/"};
+    for (const char *prefix : prefixes) {
+        const size_t prefixLength = std::strlen(prefix);
+        if (size >= prefixLength && std::memcmp(text, prefix, prefixLength) == 0)
+            return true;
+    }
+    return false;
+}
+
+bool isQzssChatMessageStart(const uint8_t *text, size_t size)
+{
+    static constexpr const char *prefixes[] = {"みちびき災危通報", "みちびきDCX"};
+    for (const char *prefix : prefixes) {
+        const size_t prefixLength = std::strlen(prefix);
+        if (size >= prefixLength && std::memcmp(text, prefix, prefixLength) == 0)
+            return true;
+    }
+    return false;
+}
+
+bool isQzssChatMessageComplete(const uint8_t *text, size_t size)
+{
+    if (size < 9 || text[size - 9] != '0' || text[size - 8] != 'x' || text[size - 1] != '/')
+        return false;
+    for (size_t i = size - 7; i < size - 1; ++i) {
+        const uint8_t c = text[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')))
+            return false;
+    }
+    return true;
+}
+
+struct PendingQzssChatMessage {
+    std::unique_ptr<LogMessageEnv> message;
+    uint32_t receivedAt;
+};
+
+std::vector<PendingQzssChatMessage> pendingQzssChatMessages;
 } // namespace
 
 /**
@@ -1050,6 +1094,35 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
     }
     view->updateLastHeard(p.from, receivedAt);
 
+    const auto flushPendingQzssMessages = [this](bool complete) {
+        if (pendingQzssChatMessages.empty())
+            return;
+
+        bool allDuplicate = true;
+        for (const auto &entry : pendingQzssChatMessages) {
+            if (!isRecentDuplicate(*entry.message, entry.receivedAt))
+                allDuplicate = false;
+        }
+
+        if (!complete || !allDuplicate) {
+            for (auto &entry : pendingQzssChatMessages) {
+                LogMessageEnv &message = *entry.message;
+                char text[messagePayloadSize + 1] = {};
+                for (size_t i = 0; i < message._size; ++i) {
+                    const char character = static_cast<char>(message.bytes[i]);
+                    text[i] = character == '\r' || character == '\n' ? ' ' : character;
+                }
+                view->newMessage(message.from, message.to, message.ch, text, entry.receivedAt);
+                if (!messageLog.append(std::move(entry.message)))
+                    ILOG_ERROR("Message log is shutting down; incoming QZSS message not persisted");
+            }
+        }
+        pendingQzssChatMessages.clear();
+    };
+
+    if (p.decoded.portnum != meshtastic_PortNum_TEXT_MESSAGE_APP)
+        flushPendingQzssMessages(false);
+
     switch (p.decoded.portnum) {
     case meshtastic_PortNum_ALERT_APP:
     case meshtastic_PortNum_DETECTION_SENSOR_APP:
@@ -1078,11 +1151,25 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
         }
         auto message = std::make_unique<LogMessageEnv>(p.from, p.to, p.channel, receivedAt, LogMessage::eDefault, false,
                                                        p.decoded.payload.size, p.decoded.payload.bytes);
-        if (isRecentDuplicate(*message, receivedAt))
+        if (!isQzssChatMessage(p.decoded.payload.bytes, p.decoded.payload.size)) {
+            flushPendingQzssMessages(false);
+            if (isRecentDuplicate(*message, receivedAt))
+                break;
+            view->newMessage(p.from, p.to, p.channel, messageText, receivedAt);
+            if (!messageLog.append(std::move(message)))
+                ILOG_ERROR("Message log is shutting down; incoming message not persisted");
             break;
-        view->newMessage(p.from, p.to, p.channel, messageText, receivedAt);
-        if (!messageLog.append(std::move(message)))
-            ILOG_ERROR("Message log is shutting down; incoming message not persisted");
+        }
+
+        if (isQzssChatMessageStart(p.decoded.payload.bytes, p.decoded.payload.size) && !pendingQzssChatMessages.empty())
+            flushPendingQzssMessages(false);
+        if (!pendingQzssChatMessages.empty() &&
+            (pendingQzssChatMessages.front().message->from != p.from || pendingQzssChatMessages.front().message->ch != p.channel))
+            flushPendingQzssMessages(false);
+
+        pendingQzssChatMessages.push_back({std::move(message), receivedAt});
+        if (isQzssChatMessageComplete(p.decoded.payload.bytes, p.decoded.payload.size))
+            flushPendingQzssMessages(true);
         break;
     }
     case meshtastic_PortNum_POSITION_APP: {
