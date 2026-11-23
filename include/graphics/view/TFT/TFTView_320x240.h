@@ -136,6 +136,7 @@ class TFTView_320x240 : public MeshtasticView, private NodeListActionSink
         eChannel,
         eWifi,
         eLanguage,
+        eTimezone,
         eScreenTimeout,
         eScreenLock,
         eScreenBrightness,
@@ -467,6 +468,7 @@ class TFTView_320x240 : public MeshtasticView, private NodeListActionSink
     static void ui_event_preset_button(lv_event_t *e);
     static void ui_event_wifi_button(lv_event_t *e);
     static void ui_event_language_button(lv_event_t *e);
+    static void ui_event_timezone_button(lv_event_t *e);
     static void ui_event_channel_button(lv_event_t *e);
     static void ui_event_brightness_button(lv_event_t *e);
     static void ui_event_theme_button(lv_event_t *e);

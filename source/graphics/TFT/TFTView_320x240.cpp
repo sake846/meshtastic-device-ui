@@ -807,6 +807,59 @@ void TFTView_320x240::updateBootMessage(const char *msg)
         lv_label_set_text(objects.firmware_label, msg);
 }
 
+static constexpr struct PagerTimezoneOption {
+    const char *label;
+    const char *value;
+} pagerTimezoneOptions[] = {
+    {"UTC", "UTC0"},
+    {"Japan (UTC+9)", "JST-9"},
+    {"US/Hawaii", "HST10"},
+    {"US/Alaska", "AKST9AKDT,M3.2.0,M11.1.0"},
+    {"US/Pacific", "PST8PDT,M3.2.0,M11.1.0"},
+    {"US/Arizona", "MST7"},
+    {"US/Mountain", "MST7MDT,M3.2.0,M11.1.0"},
+    {"US/Central", "CST6CDT,M3.2.0,M11.1.0"},
+    {"US/Eastern", "EST5EDT,M3.2.0,M11.1.0"},
+    {"BR/Brasilia", "BRT3"},
+    {"EU/Western", "GMT0BST,M3.5.0/1,M10.5.0"},
+    {"EU/Central", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"EU/Eastern", "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+    {"Asia/Kolkata", "IST-5:30"},
+    {"Asia/Hong_Kong", "HKT-8"},
+    {"AU/AWST", "AWST-8"},
+    {"AU/ACST", "ACST-9:30ACDT,M10.1.0,M4.1.0/3"},
+    {"AU/AEST", "AEST-10AEDT,M10.1.0,M4.1.0/3"},
+    {"Pacific/NZ", "NZST-12NZDT,M9.5.0,M4.1.0/3"},
+};
+
+static constexpr const char *pagerTimezoneLabels =
+    "UTC\nJapan (UTC+9)\nUS/Hawaii\nUS/Alaska\nUS/Pacific\nUS/Arizona\nUS/Mountain\nUS/Central\nUS/Eastern\n"
+    "BR/Brasilia\nEU/Western\nEU/Central\nEU/Eastern\nAsia/Kolkata\nAsia/Hong_Kong\nAU/AWST\nAU/ACST\nAU/AEST\nPacific/NZ";
+
+static uint32_t pagerTimezoneIndex(const char *value)
+{
+    for (uint32_t i = 0; i < sizeof(pagerTimezoneOptions) / sizeof(pagerTimezoneOptions[0]); ++i) {
+        if (value && strcmp(value, pagerTimezoneOptions[i].value) == 0)
+            return i;
+    }
+    return 0;
+}
+
+static void pagerUpdateTimezoneLabel(const char *value)
+{
+    const char *label = value && *value ? value : pagerTimezoneOptions[0].label;
+    for (const auto &option : pagerTimezoneOptions) {
+        if (value && strcmp(value, option.value) == 0) {
+            label = option.label;
+            break;
+        }
+    }
+
+    char text[64];
+    lv_snprintf(text, sizeof(text), _("Timezone: %s"), label);
+    lv_label_set_text(objects.basic_settings_timezone_label, text);
+}
+
 /**
  * @brief Initialize all screens and apply customizations
  *
@@ -817,6 +870,15 @@ void TFTView_320x240::init_screens(void)
     state = MeshtasticView::eInitScreens;
     ui_init();
     apply_hotfix();
+    lv_obj_remove_flag(objects.basic_settings_timezone_button, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_size(objects.settings_timezone, 220, 120);
+    lv_label_set_text(lv_obj_get_child(objects.settings_timezone, 0), _("Timezone"));
+    lv_obj_add_flag(lv_obj_get_child(objects.settings_timezone, 2), LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(objects.settings_tzcity, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(objects.settings_tzzone, 5, 30);
+    lv_obj_set_width(objects.settings_tzzone, 200);
+    lv_dropdown_set_options_static(objects.settings_tzzone, pagerTimezoneLabels);
+    pagerUpdateTimezoneLabel(db.config.has_device ? db.config.device.tzdef : "");
     const uint32_t screenWidth = lv_display_get_horizontal_resolution(displaydriver->getDisplay());
     const uint32_t screenHeight = lv_display_get_vertical_resolution(displaydriver->getDisplay());
     lv_obj_t *displayScreens[] = {objects.main_screen, objects.boot_screen, objects.blank_screen,
@@ -978,6 +1040,8 @@ lv_obj_t *TFTView_320x240::activeSettingsPanel(void) const
         return objects.settings_wifi_panel;
     case eLanguage:
         return objects.settings_language_panel;
+    case eTimezone:
+        return objects.settings_timezone;
     case eScreenTimeout:
         return objects.settings_screen_timeout_panel;
     case eScreenLock:
@@ -1873,6 +1937,7 @@ void TFTView_320x240::ui_events_init(void)
     lv_obj_add_event_cb(objects.basic_settings_modem_preset_button, ui_event_preset_button, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(objects.basic_settings_wifi_button, ui_event_wifi_button, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(objects.basic_settings_language_button, ui_event_language_button, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(objects.basic_settings_timezone_button, ui_event_timezone_button, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(objects.basic_settings_channel_button, ui_event_channel_button, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(objects.basic_settings_timeout_button, ui_event_timeout_button, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(objects.basic_settings_screen_lock_button, ui_event_screen_lock_button, LV_EVENT_CLICKED, NULL);
@@ -2421,9 +2486,20 @@ void TFTView_320x240::ui_event_scroll_panel(lv_event_t *e)
     lv_obj_t *panel = (lv_obj_t *)lv_event_get_target(e);
     uint32_t key = lv_event_get_key(e);
 
-    // Define how many pixels to scroll per keypress
+    lv_indev_t *indev = lv_indev_active();
+    const bool encoder = indev && lv_indev_get_type(indev) == LV_INDEV_TYPE_ENCODER;
     const lv_coord_t scroll_step = 80;
-
+    if (encoder && key == LV_KEY_ENTER) {
+        if (lv_group_t *group = lv_indev_get_group(indev))
+            lv_group_set_editing(group, false);
+        lv_event_stop_processing(e);
+        return;
+    }
+    if (encoder && (key == LV_KEY_LEFT || key == LV_KEY_RIGHT)) {
+        lv_obj_scroll_by_bounded(panel, 0, key == LV_KEY_RIGHT ? -scroll_step : scroll_step, LV_ANIM_ON);
+        lv_event_stop_processing(e);
+        return;
+    }
     if (key == LV_KEY_DOWN) {
         lv_obj_scroll_by_bounded(panel, 0, -scroll_step, LV_ANIM_ON);
     } else if (key == LV_KEY_UP) {
@@ -3427,6 +3503,19 @@ void TFTView_320x240::ui_event_language_button(lv_event_t *e)
         THIS->disablePanel(objects.controller_panel);
         THIS->disablePanel(objects.tab_page_basic_settings);
         THIS->activeSettings = eLanguage;
+    }
+}
+
+void TFTView_320x240::ui_event_timezone_button(lv_event_t *e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED && THIS->activeSettings == eNone &&
+        THIS->db.config.has_device) {
+        lv_dropdown_set_selected(objects.settings_tzzone, pagerTimezoneIndex(THIS->db.config.device.tzdef));
+        lv_obj_remove_flag(objects.settings_timezone, LV_OBJ_FLAG_HIDDEN);
+        lv_group_focus_obj(objects.settings_tzzone);
+        THIS->disablePanel(objects.controller_panel);
+        THIS->disablePanel(objects.tab_page_basic_settings);
+        THIS->activeSettings = eTimezone;
     }
 }
 
@@ -6122,6 +6211,22 @@ void TFTView_320x240::ui_event_ok(lv_event_t *e)
             lv_group_focus_obj(objects.basic_settings_language_button);
             break;
         }
+        case eTimezone: {
+            meshtastic_Config_DeviceConfig &device = THIS->db.config.device;
+            const uint32_t index = lv_dropdown_get_selected(objects.settings_tzzone);
+            if (index < sizeof(pagerTimezoneOptions) / sizeof(pagerTimezoneOptions[0]) &&
+                strcmp(device.tzdef, pagerTimezoneOptions[index].value) != 0) {
+                strncpy(device.tzdef, pagerTimezoneOptions[index].value, sizeof(device.tzdef));
+                device.tzdef[sizeof(device.tzdef) - 1] = '\0';
+                setenv("TZ", device.tzdef, 1);
+                tzset();
+                THIS->controller->sendConfig(meshtastic_Config_DeviceConfig{device}, THIS->ownNode);
+                pagerUpdateTimezoneLabel(device.tzdef);
+            }
+            lv_obj_add_flag(objects.settings_timezone, LV_OBJ_FLAG_HIDDEN);
+            lv_group_focus_obj(objects.basic_settings_timezone_button);
+            break;
+        }
         case eScreenTimeout: {
             uint32_t value = lv_slider_get_value(objects.screen_timeout_slider);
             if (value > 5)
@@ -6411,6 +6516,11 @@ void TFTView_320x240::ui_event_cancel(lv_event_t *e)
             lv_group_focus_obj(objects.basic_settings_language_button);
             break;
         }
+        case TFTView_320x240::eTimezone: {
+            lv_obj_add_flag(objects.settings_timezone, LV_OBJ_FLAG_HIDDEN);
+            lv_group_focus_obj(objects.basic_settings_timezone_button);
+            break;
+        }
         case TFTView_320x240::eScreenTimeout: {
             lv_obj_add_flag(objects.settings_screen_timeout_panel, LV_OBJ_FLAG_HIDDEN);
             lv_group_focus_obj(objects.basic_settings_timeout_button);
@@ -6584,6 +6694,11 @@ void TFTView_320x240::handleAddMessage(char *msg)
     uint8_t hopLimit = db.config.lora.hop_limit;
     uint32_t requestId;
     uint32_t channelOrNode = (uintptr_t)activeMsgContainer->user_data;
+    if (channelOrNode < c_max_channels && db.channel[channelOrNode].has_settings &&
+        strcmp(db.channel[channelOrNode].settings.name, "QZSS-DCR") == 0) {
+        ILOG_INFO("QZSS-DCR chat is read-only");
+        return;
+    }
     bool usePkc = false;
 
     auto callback = [this](const ResponseHandler::Request &req, ResponseHandler::EventType evt, int32_t pass) {
@@ -7917,6 +8032,7 @@ void TFTView_320x240::updateDeviceConfig(const meshtastic_Config_DeviceConfig &c
     lv_dropdown_get_selected_str(objects.settings_device_role_dropdown, buf1, sizeof(buf1));
     lv_snprintf(buf2, sizeof(buf2), _("Device Role: %s"), buf1);
     lv_label_set_text(objects.basic_settings_role_label, buf2);
+    pagerUpdateTimezoneLabel(cfg.tzdef);
 }
 
 void TFTView_320x240::updatePositionConfig(const meshtastic_Config_PositionConfig &cfg)
