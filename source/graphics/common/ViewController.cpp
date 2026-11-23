@@ -1080,7 +1080,7 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
                                                        p.decoded.payload.size, p.decoded.payload.bytes);
         if (isRecentDuplicate(*message, receivedAt))
             break;
-        view->newMessage(p.from, p.to, p.channel, (const char *)p.decoded.payload.bytes, receivedAt);
+        view->newMessage(p.from, p.to, p.channel, messageText, receivedAt);
         if (!messageLog.append(std::move(message)))
             ILOG_ERROR("Message log is shutting down; incoming message not persisted");
         break;
