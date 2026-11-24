@@ -103,9 +103,8 @@ static void muiRefreshQzssStatus()
     if (!muiM10QzssLabel)
         return;
 
-    if (!QzssDcr::isUbloxM10Detected()) {
-        lv_label_set_text(muiM10QzssLabel, "#808080 M10:NONE QZSS:-- DCR:--#");
-    } else {
+    char status[96] = "#808080 M10:NONE QZSS:-- DCR:--#";
+    if (QzssDcr::isUbloxM10Detected()) {
         const bool enabled = QzssDcr::isEnabled();
         QzssDcr::SatelliteStatus satellites[QzssDcr::MAX_QZSS_SATELLITES] = {};
         uint8_t satelliteCount = 0;
@@ -141,20 +140,24 @@ static void muiRefreshQzssStatus()
             std::snprintf(dcrStatus, sizeof(dcrStatus), "DCR:OFF");
         }
 
-        char status[96];
         std::snprintf(status, sizeof(status), "#00C853 M10:OK# #%s %s# #%s %s#", qzssColor, qzssStatus, dcrColor, dcrStatus);
-        lv_label_set_text(muiM10QzssLabel, status);
     }
+    if (std::strcmp(lv_label_get_text(muiM10QzssLabel), status) != 0)
+        lv_label_set_text(muiM10QzssLabel, status);
 
-    lv_obj_t *parent = lv_obj_get_parent(objects.home_location_label);
-    lv_obj_update_layout(parent);
-    lv_obj_set_width(muiM10QzssLabel, lv_obj_get_width(parent) - lv_obj_get_x(objects.home_location_label));
-    lv_label_set_long_mode(muiM10QzssLabel, LV_LABEL_LONG_CLIP);
-    const lv_font_t *gpsFont = lv_obj_get_style_text_font(objects.home_location_label, LV_PART_MAIN);
-    const lv_coord_t gpsLineSpacing =
-        lv_font_get_line_height(gpsFont) + lv_obj_get_style_text_line_space(objects.home_location_label, LV_PART_MAIN);
-    lv_obj_align_to(muiM10QzssLabel, objects.home_location_label, LV_ALIGN_TOP_LEFT, 0, gpsLineSpacing);
-    lv_obj_move_foreground(muiM10QzssLabel);
+    lv_obj_t *gpsLabel = objects.home_location_label;
+    const int32_t width = lv_obj_get_width(lv_obj_get_parent(gpsLabel)) - lv_obj_get_x(gpsLabel);
+    if (width > 0 && lv_obj_get_style_width(muiM10QzssLabel, LV_PART_MAIN) != width)
+        lv_obj_set_width(muiM10QzssLabel, width);
+
+    const lv_font_t *gpsFont = lv_obj_get_style_text_font(gpsLabel, LV_PART_MAIN);
+    const lv_coord_t gpsLineSpacing = lv_font_get_line_height(gpsFont) + lv_obj_get_style_text_line_space(gpsLabel, LV_PART_MAIN);
+    lv_area_t gpsTextArea;
+    lv_area_t statusArea;
+    lv_obj_get_content_coords(gpsLabel, &gpsTextArea);
+    lv_obj_get_coords(muiM10QzssLabel, &statusArea);
+    if (statusArea.x1 != gpsTextArea.x1 || statusArea.y1 != gpsTextArea.y1 + gpsLineSpacing)
+        lv_obj_align_to(muiM10QzssLabel, gpsLabel, LV_ALIGN_TOP_LEFT, 0, gpsLineSpacing);
 }
 
 static void muiQzssStatusTimer(lv_timer_t *)
@@ -980,6 +983,8 @@ void TFTView_320x240::init_screens(void)
     state = MeshtasticView::eInitDone;
     ILOG_DEBUG("TFTView_320x240 init done.");
 #if defined(HAS_QZSS_DCR)
+    lv_obj_update_layout(objects.home_location_label);
+    muiRefreshQzssStatus();
     lv_timer_create(muiQzssStatusTimer, 1000, nullptr);
 #endif
 }
@@ -1869,6 +1874,7 @@ void TFTView_320x240::ui_events_init(void)
                                      LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(muiM10QzssLabel, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_label_set_recolor(muiM10QzssLabel, true);
+    lv_label_set_long_mode(muiM10QzssLabel, LV_LABEL_LONG_CLIP);
 #endif
     lv_obj_add_event_cb(objects.home_wlan_button, this->ui_event_WLANButton, LV_EVENT_LONG_PRESSED, NULL);
     lv_obj_add_event_cb(objects.home_mqtt_button, this->ui_event_MQTTButton, LV_EVENT_ALL, NULL);
