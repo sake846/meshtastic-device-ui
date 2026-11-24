@@ -972,6 +972,9 @@ void TFTView_320x240::init_screens(void)
     updateFreeMem();
 
     screensInitialised = true;
+#ifdef DISPLAY_POWER_BUTTON_ONLY
+    displaydriver->forceWakeup();
+#endif
     state = MeshtasticView::eInitDone;
     ILOG_DEBUG("TFTView_320x240 init done.");
 #if defined(HAS_QZSS_DCR)
