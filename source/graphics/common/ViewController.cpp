@@ -1108,10 +1108,7 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
             for (auto &entry : pendingQzssChatMessages) {
                 LogMessageEnv &message = *entry.message;
                 char text[messagePayloadSize + 1] = {};
-                for (size_t i = 0; i < message._size; ++i) {
-                    const char character = static_cast<char>(message.bytes[i]);
-                    text[i] = character == '\r' || character == '\n' ? ' ' : character;
-                }
+                std::memcpy(text, message.bytes, message._size);
                 view->newMessage(message.from, message.to, message.ch, text, entry.receivedAt);
                 if (!messageLog.append(std::move(entry.message)))
                     ILOG_ERROR("Message log is shutting down; incoming QZSS message not persisted");
@@ -1155,6 +1152,7 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
             flushPendingQzssMessages(false);
             if (isRecentDuplicate(*message, receivedAt))
                 break;
+            std::memcpy(messageText, p.decoded.payload.bytes, messageLength);
             view->newMessage(p.from, p.to, p.channel, messageText, receivedAt);
             if (!messageLog.append(std::move(message)))
                 ILOG_ERROR("Message log is shutting down; incoming message not persisted");
