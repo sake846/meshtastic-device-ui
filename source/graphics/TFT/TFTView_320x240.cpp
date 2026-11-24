@@ -868,6 +868,8 @@ void TFTView_320x240::init_screens(void)
 {
     ILOG_DEBUG("init screens...");
     state = MeshtasticView::eInitScreens;
+    // The boot screen may have blanked and left the wake-up group as LVGL's default.
+    lv_group_set_default(defaultPanelGroup);
     ui_init();
     apply_hotfix();
     lv_obj_remove_flag(objects.basic_settings_timezone_button, LV_OBJ_FLAG_HIDDEN);
