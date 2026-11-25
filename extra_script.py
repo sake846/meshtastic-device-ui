@@ -5,6 +5,7 @@ from pathlib import Path
 # Base srcFilter. Cannot be set in library.json.
 src_filter = [
     "+<resources>",
+    "-<resources/japanese>",  # Keep SKK-JISYO.S out of the assembler.
     "+<locale>",
     "+<source>"
 ]
@@ -160,6 +161,30 @@ if font_source:
     build_dir.mkdir(parents=True, exist_ok=True)
     (build_dir / "device_ui_japanese_font.h").write_text("\n".join(header_lines) + "\n", encoding="utf-8")
     env.Append(CPPPATH=[str(build_dir)], CPPDEFINES=["MESHTASTIC_DEVICE_UI_JAPANESE_FONT"])
+
+    if "T_LORA_PAGER" in env.get("CPPDEFINES", []):
+        # https://github.com/skk-dev/dict/blob/0a164e6b990c5eb5b59eb7d8789f08865dc2f644/SKK-JISYO.S
+        from json import dumps
+
+        dictionary = Path("resources/japanese/SKK-JISYO.S").read_text(encoding="euc_jp")
+        _, entries = dictionary.split(";; okuri-nasi entries.", 1)
+        table = {}
+        for line in entries.splitlines():
+            if not line or line.startswith(";"):
+                continue
+            reading, candidates = line.split(" /", 1)
+            words = (word.split(";", 1)[0] for word in candidates.split("/"))
+            supported = [word for word in words if word and word != reading and
+                         all(0x20 <= ord(char) < 0x7F or ord(char) in glyphs for char in word)]
+            if supported:
+                table[reading] = "\t".join(dict.fromkeys(supported))
+
+        header_lines = ['#include "input/JapaneseIme.h"', 'static constexpr JapaneseIme::Entry japaneseDictionary[] = {']
+        for reading, words in sorted(table.items()):
+            header_lines.append(f"    {{{dumps(reading, ensure_ascii=False)}, {dumps(words, ensure_ascii=False)}}},")
+        header_lines.append("};")
+        (build_dir / "device_ui_japanese_dictionary.h").write_text("\n".join(header_lines) + "\n", encoding="utf-8")
+        env.Append(CPPDEFINES=["MESHTASTIC_DEVICE_UI_JAPANESE_IME"])
 
 # Dump construction environment (for debug purposes)
 # print("meshtastic-device-ui Library ENV:")

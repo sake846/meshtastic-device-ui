@@ -42,6 +42,10 @@
 #if defined(MESHTASTIC_DEVICE_UI_JAPANESE_FONT)
 #include "device_ui_japanese_font.h"
 #endif
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+#include "device_ui_japanese_dictionary.h"
+#include "input/I2CKeyboardInputDriver.h"
+#endif
 #if defined(INPUTDRIVER_ROTARY_TYPE)
 extern void pagerSetActiveMenuButton(lv_obj_t *button);
 #endif
@@ -256,6 +260,62 @@ constexpr lv_color_t colorLightGray = LV_COLOR_HEX(0xAAFBFF);
 constexpr lv_color_t colorMidGray = LV_COLOR_HEX(0x808080);
 constexpr lv_color_t colorDarkGray = LV_COLOR_HEX(0x303030);
 constexpr lv_color_t colorMesh = LV_COLOR_HEX(0x67ea94);
+
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+namespace
+{
+JapaneseIme japaneseIme(japaneseDictionary);
+bool japaneseInputEnabled = false;
+lv_obj_t *japaneseInputStatus = nullptr;
+
+void showJapaneseInput(const char *error = nullptr)
+{
+    if (!japaneseInputEnabled && !error) {
+        lv_obj_set_hidden(japaneseInputStatus, true);
+        return;
+    }
+
+    std::string status;
+    if (error) {
+        status = error;
+    } else {
+        status = "日本語";
+        if (japaneseIme.composing()) {
+            status += "  ";
+            if (japaneseIme.candidateCount()) {
+                status += std::to_string(japaneseIme.candidateNumber()) + "/" + std::to_string(japaneseIme.candidateCount());
+                status += "  ";
+            }
+            status += japaneseIme.text();
+        }
+    }
+    lv_label_set_text(japaneseInputStatus, status.c_str());
+    lv_obj_move_foreground(japaneseInputStatus);
+    lv_obj_set_hidden(japaneseInputStatus, false);
+}
+
+void showChatLengthError()
+{
+    showJapaneseInput(japaneseInputEnabled ? "メッセージが長すぎます" : "Message too long");
+}
+
+bool commitJapaneseInput(lv_obj_t *textarea, size_t byteLimit)
+{
+    const auto text = japaneseIme.text(true);
+    const char *draft = lv_textarea_get_text(textarea);
+    const auto charLimit = lv_textarea_get_max_length(textarea);
+    if (std::strlen(draft) + text.size() > byteLimit ||
+        (charLimit && lv_text_get_encoded_length(draft) + lv_text_get_encoded_length(text.c_str()) > charLimit)) {
+        showChatLengthError();
+        return false;
+    }
+    lv_textarea_add_text(textarea, text.c_str());
+    japaneseIme.clear();
+    showJapaneseInput();
+    return true;
+}
+} // namespace
+#endif
 
 enum ScrollDirection {
     scrollDownLeft = 1,
@@ -877,6 +937,7 @@ void TFTView_320x240::init_screens(void)
     apply_hotfix();
     lv_obj_remove_flag(objects.basic_settings_timezone_button, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_size(objects.settings_timezone, 220, 120);
+    lv_obj_set_pos(objects.settings_timezone, LV_PCT(3), LV_PCT(25));
     lv_label_set_text(lv_obj_get_child(objects.settings_timezone, 0), _("Timezone"));
     lv_obj_add_flag(lv_obj_get_child(objects.settings_timezone, 2), LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(objects.settings_tzcity, LV_OBJ_FLAG_HIDDEN);
@@ -1656,6 +1717,20 @@ void TFTView_320x240::apply_hotfix(void)
     lv_obj_remove_flag(objects.detector_start_button_panel, LV_OBJ_FLAG_HIDDEN);
 
     lv_textarea_set_placeholder_text(objects.message_input_area, _("Enter Text ..."));
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+    lv_obj_set_style_text_font(objects.message_input_area, &device_ui_japanese_font, LV_PART_MAIN);
+    japaneseInputStatus = lv_label_create(objects.messages_panel);
+    lv_obj_set_width(japaneseInputStatus, LV_PCT(85));
+    lv_obj_align(japaneseInputStatus, LV_ALIGN_BOTTOM_LEFT, 6, -27);
+    lv_obj_set_style_text_font(japaneseInputStatus, &device_ui_japanese_font, LV_PART_MAIN);
+    lv_obj_set_style_text_color(japaneseInputStatus, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(japaneseInputStatus, colorDarkGray, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(japaneseInputStatus, LV_OPA_COVER, LV_PART_MAIN);
+    lv_label_set_long_mode(japaneseInputStatus, LV_LABEL_LONG_DOT);
+    lv_obj_set_floating(japaneseInputStatus, true);
+    lv_obj_set_hidden(japaneseInputStatus, true);
+    TLoraPagerKeyboardInputDriver::setJapaneseImeTarget(objects.message_input_area);
+#endif
     lv_textarea_set_placeholder_text(objects.nodes_filter_name_area, _("!Enter Filter ..."));
     lv_textarea_set_placeholder_text(objects.nodes_hl_name_area, _("Enter Filter ..."));
 
@@ -1927,6 +2002,10 @@ void TFTView_320x240::ui_events_init(void)
     lv_obj_add_event_cb(objects.message_input_area, ui_event_message_ready, LV_EVENT_CANCEL, NULL);
     lv_obj_add_event_cb(objects.message_input_area, ui_event_message_ready, LV_EVENT_KEY, NULL);
     lv_obj_add_event_cb(objects.message_input_area, ui_event_message_ready, LV_EVENT_READY, NULL);
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+    lv_obj_add_event_cb(objects.message_input_area, ui_event_japanese_input,
+                        static_cast<lv_event_code_t>(LV_EVENT_KEY | LV_EVENT_PREPROCESS), nullptr);
+#endif
 
     // text area edit-mode tracking (focus-driven, independent from virtual keyboard visibility)
     lv_obj_add_event_cb(objects.settings_user_short_textarea, ui_event_textarea_edit_mode, LV_EVENT_ALL, NULL);
@@ -3228,6 +3307,10 @@ void TFTView_320x240::ui_event_KeyboardButton(lv_event_t *e)
         switch (keyBtnIdx) {
         case 0:
             if (kbdSlideState == eKbdHidden) {
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+                if (japaneseIme.composing() && !commitJapaneseInput(objects.message_input_area, THIS->chatMessageByteLimit()))
+                    return;
+#endif
                 lv_obj_remove_flag(objects.keyboard, LV_OBJ_FLAG_HIDDEN);
                 THIS->showKeyboard(objects.message_input_area);
             } else if (kbdSlideState == eKbdShown) {
@@ -3344,6 +3427,59 @@ void TFTView_320x240::ui_event_Keyboard(lv_event_t *e)
     }
 }
 
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+size_t TFTView_320x240::chatMessageByteLimit() const
+{
+    const auto channelOrNode = reinterpret_cast<uintptr_t>(activeMsgContainer->user_data);
+    const bool direct = channelOrNode >= c_max_channels;
+    const auto channel = direct ? nodeChannel(channelOrNode) : channelOrNode;
+    const bool authenticated =
+        (direct && nodeHasKey(channelOrNode)) ||
+        (channel < c_max_channels && db.channel[channel].has_settings && db.channel[channel].settings.use_aead);
+    // A 255-byte frame carries a 16-byte header, 7 bytes of text Data fields, and an optional 12-byte tag/nonce.
+    return authenticated ? 220 : 232;
+}
+
+void TFTView_320x240::ui_event_japanese_input(lv_event_t *e)
+{
+    const auto *param = static_cast<const uint32_t *>(lv_event_get_param(e));
+    if (!param || !THIS || THIS->evacuatingChatFocus)
+        return;
+
+    const uint32_t key = *param;
+    auto *textarea = lv_event_get_target_obj(e);
+    const auto commit = [textarea]() { return commitJapaneseInput(textarea, THIS->chatMessageByteLimit()); };
+    if (key == JapaneseIme::toggleKey) {
+        lv_event_stop_processing(e);
+        if (!japaneseIme.composing() || commit()) {
+            japaneseInputEnabled = !japaneseInputEnabled;
+            showJapaneseInput();
+        }
+    } else if (japaneseInputEnabled && key <= 0x7F && japaneseIme.accepts(static_cast<char>(key))) {
+        lv_event_stop_processing(e);
+        if (japaneseIme.candidateNumber() && !commit())
+            return;
+        if (japaneseIme.append(static_cast<char>(key)))
+            showJapaneseInput();
+        else
+            showChatLengthError();
+    } else if (japaneseInputEnabled && japaneseIme.composing()) {
+        if (key == ' ' || key == LV_KEY_BACKSPACE) {
+            lv_event_stop_processing(e);
+            if (key == ' ')
+                japaneseIme.cycleCandidate();
+            else
+                japaneseIme.backspace();
+            showJapaneseInput();
+        } else if (key != LV_KEY_ENTER && key != LV_KEY_ESC && !commit()) {
+            lv_event_stop_processing(e);
+        }
+    } else {
+        showJapaneseInput();
+    }
+}
+#endif
+
 void TFTView_320x240::ui_event_message_ready(lv_event_t *e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
@@ -3354,11 +3490,17 @@ void TFTView_320x240::ui_event_message_ready(lv_event_t *e)
         if (THIS && THIS->defaultPanelGroup)
             THIS->setInputGroup(THIS->defaultPanelGroup);
         TextareaEditContext::focus(lv_event_get_target_obj(e));
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+        showJapaneseInput();
+#endif
         return;
     }
 
     if (event_code == LV_EVENT_DEFOCUSED || event_code == LV_EVENT_LEAVE || event_code == LV_EVENT_CANCEL) {
         TextareaEditContext::release(lv_event_get_target_obj(e));
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+        lv_obj_set_hidden(japaneseInputStatus, true);
+#endif
         return;
     }
 #ifdef ARCH_PORTDUINO
@@ -3382,8 +3524,22 @@ void TFTView_320x240::ui_event_message_ready(lv_event_t *e)
 #endif
 
     if (event_code == LV_EVENT_READY) {
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+        if (japaneseIme.composing()) {
+            commitJapaneseInput(objects.message_input_area, THIS->chatMessageByteLimit());
+            lv_event_stop_processing(e);
+            return;
+        }
+#endif
         char *txt = (char *)lv_textarea_get_text(objects.message_input_area);
         uint32_t len = strlen(txt);
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+        if (len > THIS->chatMessageByteLimit()) {
+            showChatLengthError();
+            lv_event_stop_processing(e);
+            return;
+        }
+#endif
         if (len) {
             if (txt[len - 1] == ' ') { // use space+return combo to start new line in same message
                 lv_textarea_add_char(objects.message_input_area, CR_REPLACEMENT);
@@ -3403,6 +3559,10 @@ void TFTView_320x240::ui_event_quick_chat_button(lv_event_t *e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
     if (event_code == LV_EVENT_CLICKED || event_code == LV_EVENT_LONG_PRESSED) {
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+        if (japaneseIme.composing() && !commitJapaneseInput(objects.message_input_area, THIS->chatMessageByteLimit()))
+            return;
+#endif
         lv_obj_add_flag(objects.quick_chat_tab_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_t *btn = lv_event_get_target_obj(e);
         if (btn && btn->spec_attr && btn->spec_attr->children[0]) {

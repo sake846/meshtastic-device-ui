@@ -1,5 +1,4 @@
 #include "graphics/common/ViewController.h"
-#include "assert.h"
 #include "graphics/common/MeshtasticView.h"
 #include "util/ILog.h"
 #include "util/LogMessage.h"
@@ -583,7 +582,10 @@ void ViewController::sendTextMessage(uint32_t to, uint8_t ch, uint8_t hopLimit, 
                                      const char *textmsg)
 {
     size_t msgLen = strlen(textmsg);
-    assert(msgLen <= (size_t)DATA_PAYLOAD_LEN);
+    if (msgLen > DATA_PAYLOAD_LEN) {
+        view->textMessageStatus(requestId, LogMessage::eFailed);
+        return;
+    }
 
     if (!messageLog.append(std::make_unique<LogMessageEnv>(myNodeNum, to, ch, msgTime, LogMessage::eDefault, false, msgLen,
                                                            (const uint8_t *)textmsg),
@@ -653,51 +655,21 @@ bool ViewController::send(uint32_t to, uint8_t ch, uint8_t hopLimit, uint32_t re
 {
     ILOG_DEBUG("sending meshpacket to radio id=0x%x, to=0x%08x(%u), ch=%u, portnum=%u, len=%u, wantRsp=%d", requestId, to, to,
                (unsigned int)ch, portnum, len, wantRsp);
-    // send requires movable lvalue, i.e. a temporary object
-    return client->send(meshtastic_ToRadio{
+    if (len > DATA_PAYLOAD_LEN)
+        return false;
+
+    meshtastic_ToRadio packet{
         .which_payload_variant = meshtastic_ToRadio_packet_tag,
-        .packet{
-            .to = to,
-            .channel = ch,
-            .which_payload_variant = meshtastic_MeshPacket_decoded_tag,
-            .decoded{
-                .portnum = portnum,
-                .payload{.size = (unsigned short)len,
-                         .bytes = {bytes[0],   bytes[1],   bytes[2],   bytes[3],   bytes[4],   bytes[5],   bytes[6],   bytes[7],
-                                   bytes[8],   bytes[9],   bytes[10],  bytes[11],  bytes[12],  bytes[13],  bytes[14],  bytes[15],
-                                   bytes[16],  bytes[17],  bytes[18],  bytes[19],  bytes[20],  bytes[21],  bytes[22],  bytes[23],
-                                   bytes[24],  bytes[25],  bytes[26],  bytes[27],  bytes[28],  bytes[29],  bytes[30],  bytes[31],
-                                   bytes[32],  bytes[33],  bytes[34],  bytes[35],  bytes[36],  bytes[37],  bytes[38],  bytes[39],
-                                   bytes[40],  bytes[41],  bytes[42],  bytes[43],  bytes[44],  bytes[45],  bytes[46],  bytes[47],
-                                   bytes[48],  bytes[49],  bytes[50],  bytes[51],  bytes[52],  bytes[53],  bytes[54],  bytes[55],
-                                   bytes[56],  bytes[57],  bytes[58],  bytes[59],  bytes[60],  bytes[61],  bytes[62],  bytes[63],
-                                   bytes[64],  bytes[65],  bytes[66],  bytes[67],  bytes[68],  bytes[69],  bytes[70],  bytes[71],
-                                   bytes[72],  bytes[73],  bytes[74],  bytes[75],  bytes[76],  bytes[77],  bytes[78],  bytes[79],
-                                   bytes[80],  bytes[81],  bytes[82],  bytes[83],  bytes[84],  bytes[85],  bytes[86],  bytes[87],
-                                   bytes[88],  bytes[89],  bytes[90],  bytes[91],  bytes[92],  bytes[93],  bytes[94],  bytes[95],
-                                   bytes[96],  bytes[97],  bytes[98],  bytes[99],  bytes[100], bytes[101], bytes[102], bytes[103],
-                                   bytes[104], bytes[105], bytes[106], bytes[107], bytes[108], bytes[109], bytes[110], bytes[111],
-                                   bytes[112], bytes[113], bytes[114], bytes[115], bytes[116], bytes[117], bytes[118], bytes[119],
-                                   bytes[120], bytes[121], bytes[122], bytes[123], bytes[124], bytes[125], bytes[126], bytes[127],
-                                   bytes[128], bytes[129], bytes[130], bytes[131], bytes[132], bytes[133], bytes[134], bytes[135],
-                                   bytes[136], bytes[137], bytes[138], bytes[139], bytes[140], bytes[141], bytes[142], bytes[143],
-                                   bytes[144], bytes[145], bytes[146], bytes[147], bytes[148], bytes[149], bytes[150], bytes[151],
-                                   bytes[152], bytes[153], bytes[154], bytes[155], bytes[156], bytes[157], bytes[158], bytes[159],
-                                   bytes[160], bytes[161], bytes[162], bytes[163], bytes[164], bytes[165], bytes[166], bytes[167],
-                                   bytes[168], bytes[169], bytes[170], bytes[171], bytes[172], bytes[173], bytes[174], bytes[175],
-                                   bytes[176], bytes[177], bytes[178], bytes[179], bytes[180], bytes[181], bytes[182], bytes[183],
-                                   bytes[184], bytes[185], bytes[186], bytes[187], bytes[188], bytes[189], bytes[190], bytes[191],
-                                   bytes[192], bytes[193], bytes[194], bytes[195], bytes[196], bytes[197], bytes[198], bytes[199],
-                                   bytes[200], bytes[201], bytes[202], bytes[203], bytes[204], bytes[205], bytes[206], bytes[207],
-                                   bytes[208], bytes[209], bytes[210], bytes[211], bytes[212], bytes[213], bytes[214], bytes[215],
-                                   bytes[216], bytes[217], bytes[218], bytes[219], bytes[220], bytes[221], bytes[222], bytes[223],
-                                   bytes[224], bytes[225], bytes[226], bytes[227], bytes[228], bytes[229], bytes[230], bytes[231],
-                                   bytes[232]}},
-                .want_response = wantRsp}, // FIXME: traceRoute, requestPosition, remote config: true
-            .id = requestId,
-            .hop_limit = hopLimit,
-            .want_ack = (to != 0),
-            .pki_encrypted = usePkc}});
+        .packet{.to = to,
+                .channel = ch,
+                .which_payload_variant = meshtastic_MeshPacket_decoded_tag,
+                .decoded{.portnum = portnum, .payload{.size = static_cast<pb_size_t>(len)}, .want_response = wantRsp},
+                .id = requestId,
+                .hop_limit = hopLimit,
+                .want_ack = (to != 0),
+                .pki_encrypted = usePkc}};
+    std::memcpy(packet.packet.decoded.payload.bytes, bytes, len);
+    return client->send(std::move(packet));
 }
 
 bool ViewController::receive(void)

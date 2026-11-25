@@ -459,6 +459,8 @@ class TFTView_320x240 : public MeshtasticView, private NodeListActionSink
     static void ui_event_Keyboard(lv_event_t *e);
 
     static void ui_event_message_ready(lv_event_t *e);
+    static void ui_event_japanese_input(lv_event_t *e);
+    size_t chatMessageByteLimit() const;
     static void ui_event_quick_chat_button(lv_event_t *e);
     static void ui_event_textarea_edit_mode(lv_event_t *e);
 

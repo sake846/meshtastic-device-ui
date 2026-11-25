@@ -2,6 +2,9 @@
 #include "input/I2CKeyboardInputDriver.h"
 #include "indev/lv_indev_private.h"
 #include "input/DiacriticRotation.h"
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+#include "input/JapaneseIme.h"
+#endif
 #include "input/policy/DefaultInputPolicyFactory.h"
 #include "input/policy/InputContextState.h"
 #include "input/policy/InputPipeline.h"
@@ -204,6 +207,15 @@ static const char pagerKeyboardMap[31][3] = {
 
 // ---------- TLoraPagerKeyboardInputDriver Implementation ----------
 
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+static lv_obj_t *pagerJapaneseImeTarget = nullptr;
+
+void TLoraPagerKeyboardInputDriver::setJapaneseImeTarget(lv_obj_t *textarea)
+{
+    pagerJapaneseImeTarget = textarea;
+}
+#endif
+
 TLoraPagerKeyboardInputDriver::TLoraPagerKeyboardInputDriver(uint8_t address) : TCA8418KeyboardInputDriver(address)
 {
 }
@@ -289,6 +301,10 @@ void TLoraPagerKeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *in
         } else if (keyIndex < 31) {
             const uint8_t mapIndex = (pagerKeyboardModifiers & 0x02) ? 2 : ((pagerKeyboardModifiers & 0x01) ? 1 : 0);
             keyValue = static_cast<uint8_t>(pagerKeyboardMap[keyIndex][mapIndex]);
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+            if (keyIndex == 30 && mapIndex == 2 && focused && focused == pagerJapaneseImeTarget)
+                keyValue = JapaneseIme::toggleKey;
+#endif
             if (keyValue != 0) {
                 pagerKeyboardModifiers = 0;
                 pagerFunctionModifierActive = false;

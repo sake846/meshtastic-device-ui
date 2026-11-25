@@ -55,6 +55,7 @@ class TCA8418KeyboardInputDriver : public I2CKeyboardInputDriver
 class TLoraPagerKeyboardInputDriver : public TCA8418KeyboardInputDriver
 {
   public:
+    static void setJapaneseImeTarget(lv_obj_t *textarea);
     TLoraPagerKeyboardInputDriver(uint8_t address);
     void init(void) override;
     void readKeyboard(uint8_t address, lv_indev_t *indev, lv_indev_data_t *data) override;
