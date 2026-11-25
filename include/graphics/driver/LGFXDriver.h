@@ -193,6 +193,11 @@ template <class LGFX> void LGFXDriver<LGFX>::task_handler(void)
                             lv_indev_enable(keyboard, true);
                             lv_indev_wait_release(keyboard);
                         }
+                        if (auto *encoder = DisplayDriver::view->getInputDriver()->getEncoder()) {
+                            lv_indev_reset(encoder, nullptr);
+                            lv_indev_enable(encoder, true);
+                            lv_indev_wait_release(encoder);
+                        }
 #endif
                         if (hasTouch() && hasButton()) {
                             ILOG_DEBUG("enable touch, disable button input");
@@ -239,6 +244,11 @@ template <class LGFX> void LGFXDriver<LGFX>::task_handler(void)
                         lv_indev_reset(keyboard, nullptr);
                         lv_indev_enable(keyboard, true);
                         lv_indev_wait_release(keyboard);
+                    }
+                    if (auto *encoder = DisplayDriver::view->getInputDriver()->getEncoder()) {
+                        lv_indev_reset(encoder, nullptr);
+                        lv_indev_enable(encoder, true);
+                        lv_indev_wait_release(encoder);
                     }
 #else
                     DisplayDriver::view->blankScreen(false);

@@ -137,14 +137,39 @@ void TCA8418KeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *indev
     data->key = (uint32_t)keyValue;
 }
 
+static bool pagerKeyboardI2cFaulted = false;
+static uint32_t pagerKeyboardLastI2cFailureMs = 0;
+static uint32_t pagerKeyboardLastI2cFailureLogMs = 0;
+static uint32_t pagerKeyboardI2cFailureCount = 0;
+
+static void pagerKeyboardReportI2cFailure(uint8_t address, uint8_t reg, uint8_t txStatus, size_t rxCount)
+{
+    pagerKeyboardI2cFaulted = true;
+    const uint32_t now = lv_tick_get();
+    pagerKeyboardLastI2cFailureMs = now;
+    ++pagerKeyboardI2cFailureCount;
+    if (pagerKeyboardI2cFailureCount == 1 ||
+        static_cast<uint32_t>(now - pagerKeyboardLastI2cFailureLogMs) >= 5000) {
+        ILOG_WARN("Pager keyboard I2C read failed: addr=0x%x reg=0x%x tx=%u rx=%u total=%u", address, reg,
+                  static_cast<unsigned int>(txStatus), static_cast<unsigned int>(rxCount), pagerKeyboardI2cFailureCount);
+        pagerKeyboardLastI2cFailureLogMs = now;
+    }
+}
+
 static uint8_t pagerKeyboardReadRegister(uint8_t address, uint8_t reg)
 {
     Wire.beginTransmission(address);
     Wire.write(reg);
-    const uint8_t status = Wire.endTransmission(false);
-    const size_t count = Wire.requestFrom(address, static_cast<uint8_t>(1));
-    if (status != 0 || count == 0)
+    const uint8_t txStatus = Wire.endTransmission(false);
+    if (txStatus != 0) {
+        pagerKeyboardReportI2cFailure(address, reg, txStatus, 0);
         return 0;
+    }
+    const size_t rxCount = Wire.requestFrom(address, static_cast<uint8_t>(1));
+    if (rxCount != 1 || !Wire.available()) {
+        pagerKeyboardReportI2cFailure(address, reg, txStatus, rxCount);
+        return 0;
+    }
     return Wire.read();
 }
 
@@ -221,11 +246,18 @@ void TLoraPagerKeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *in
         return;
     }
 
+    if (pagerKeyboardI2cFaulted &&
+        static_cast<uint32_t>(lv_tick_get() - pagerKeyboardLastI2cFailureMs) < 1000)
+        return;
+    pagerKeyboardI2cFaulted = false;
+
     uint8_t count = pagerKeyboardReadRegister(address, 0x03) & 0x0F;
     if (!count)
         return;
     while (count--) {
         uint8_t event = pagerKeyboardReadRegister(address, 0x04);
+        if (pagerKeyboardI2cFaulted)
+            return;
         if ((event & 0x80) == 0)
             continue;
 

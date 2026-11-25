@@ -7,6 +7,7 @@
 #include "UptimeClock.h"
 #endif
 #include <algorithm>
+#include <cstring>
 #include <utility>
 
 #if defined(ARCH_PORTDUINO)
@@ -1003,7 +1004,9 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
     case meshtastic_PortNum_DETECTION_SENSOR_APP:
     case meshtastic_PortNum_TEXT_MESSAGE_APP:
     case meshtastic_PortNum_RANGE_TEST_APP: {
-        ILOG_INFO("received text message '%s'", (const char *)p.decoded.payload.bytes);
+        char messageText[sizeof(p.decoded.payload.bytes) + 1] = {};
+        std::memcpy(messageText, p.decoded.payload.bytes, std::min<size_t>(p.decoded.payload.size, sizeof(p.decoded.payload.bytes)));
+        ILOG_INFO("received text message '%s'", messageText);
         if (!messagesRestored && log.count() > 0) {
             // houston we have a problem! Haven't finished restoring messages incrementally while new ones come in
             if (!configCompleted) {
@@ -1019,7 +1022,7 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
             ILOG_WARN("ignoring message with invalid channel %d", (int)p.channel);
             break;
         }
-        view->newMessage(p.from, p.to, p.channel, (const char *)p.decoded.payload.bytes, time);
+        view->newMessage(p.from, p.to, p.channel, messageText, time);
         if (!messageLog.append(std::make_unique<LogMessageEnv>(p.from, p.to, p.channel, time, LogMessage::eDefault, false,
                                                                p.decoded.payload.size, p.decoded.payload.bytes)))
             ILOG_ERROR("Message log is shutting down; incoming message not persisted");

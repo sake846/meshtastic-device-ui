@@ -738,6 +738,7 @@ void TFTView_320x240::init_screens(void)
 {
     ILOG_DEBUG("init screens...");
     state = MeshtasticView::eInitScreens;
+    lv_group_set_default(defaultPanelGroup);
     ui_init();
     apply_hotfix();
     const uint32_t screenWidth = lv_display_get_horizontal_resolution(displaydriver->getDisplay());
@@ -833,6 +834,9 @@ void TFTView_320x240::init_screens(void)
     updateFreeMem();
 
     screensInitialised = true;
+#ifdef DISPLAY_POWER_BUTTON_ONLY
+    displaydriver->forceWakeup();
+#endif
     state = MeshtasticView::eInitDone;
     ILOG_DEBUG("TFTView_320x240 init done.");
 }
@@ -2323,8 +2327,20 @@ void TFTView_320x240::ui_event_scroll_panel(lv_event_t *e)
     lv_obj_t *panel = (lv_obj_t *)lv_event_get_target(e);
     uint32_t key = lv_event_get_key(e);
 
-    // Define how many pixels to scroll per keypress
+    lv_indev_t *indev = lv_indev_active();
+    const bool encoder = indev && lv_indev_get_type(indev) == LV_INDEV_TYPE_ENCODER;
     const lv_coord_t scroll_step = 80;
+    if (encoder && key == LV_KEY_ENTER) {
+        if (lv_group_t *group = lv_indev_get_group(indev))
+            lv_group_set_editing(group, false);
+        lv_event_stop_processing(e);
+        return;
+    }
+    if (encoder && (key == LV_KEY_LEFT || key == LV_KEY_RIGHT)) {
+        lv_obj_scroll_by_bounded(panel, 0, key == LV_KEY_RIGHT ? -scroll_step : scroll_step, LV_ANIM_ON);
+        lv_event_stop_processing(e);
+        return;
+    }
 
     if (key == LV_KEY_DOWN) {
         lv_obj_scroll_by_bounded(panel, 0, -scroll_step, LV_ANIM_ON);
@@ -2575,16 +2591,25 @@ void TFTView_320x240::ui_event_ChatButton(lv_event_t *e)
     static bool ignoreClicked = false;
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t *target = lv_event_get_target_obj(e);
+    if (target != lv_event_get_current_target_obj(e)) {
+        return;
+    }
     lv_obj_t *delBtn = target->LV_OBJ_IDX(1);
-    if (event_code == LV_EVENT_LONG_PRESSED) {
+    if (event_code == LV_EVENT_PRESSED) {
+        ignoreClicked = false;
+    } else if (event_code == LV_EVENT_LONG_PRESSED) {
         ignoreClicked = true;
-        lv_obj_t *delBtn = target->LV_OBJ_IDX(1);
         lv_obj_remove_flag(delBtn, LV_OBJ_FLAG_HIDDEN);
     } else if ((event_code == LV_EVENT_DEFOCUSED || event_code == LV_EVENT_LEAVE)) {
         lv_obj_add_flag(delBtn, LV_OBJ_FLAG_HIDDEN);
+        ignoreClicked = false;
     } else if (event_code == LV_EVENT_CLICKED) {
-        if (ignoreClicked) { // prevent long press to enter this setting
+        if (ignoreClicked) { // prevent the long-press release from selecting the chat
             ignoreClicked = false;
+            return;
+        }
+        if (!lv_obj_has_flag(delBtn, LV_OBJ_FLAG_HIDDEN)) {
+            lv_obj_send_event(delBtn, LV_EVENT_CLICKED, nullptr);
             return;
         }
         lv_obj_set_style_border_color(target, colorMidGray, LV_PART_MAIN);
@@ -3534,6 +3559,21 @@ void TFTView_320x240::ui_event_alert_button(lv_event_t *e)
         lv_slider_set_value(alertVolumeSlider, alertVolume, LV_ANIM_OFF);
         updateAlertVolumeLabel(alertVolumeLabel, alertVolume);
 #endif
+        if (lv_group_t *group = lv_obj_get_group(objects.settings_ringtone_dropdown)) {
+            lv_obj_t *focusOrder[] = {
+                objects.settings_alert_buzzer_switch,
+                objects.settings_ringtone_dropdown,
+#if defined(USE_I2S_BUZZER)
+                alertVolumeSlider,
+#endif
+                objects.obj15__ok_button_w,
+                objects.obj15__cancel_button_w,
+            };
+            for (lv_obj_t *obj : focusOrder)
+                lv_group_remove_obj(obj);
+            for (lv_obj_t *obj : focusOrder)
+                lv_group_add_obj(group, obj);
+        }
         lv_obj_remove_flag(objects.settings_alert_buzzer_panel, LV_OBJ_FLAG_HIDDEN);
         lv_group_focus_obj(objects.settings_alert_buzzer_switch);
         THIS->disablePanel(objects.controller_panel);
@@ -6579,6 +6619,7 @@ void TFTView_320x240::appendChatEntry(lv_obj_t *container, ChatHistory::Entry en
     }
     auto *newest = createChatBubble(container, history.at(history.last() - 1));
     placeMessageInputAfterChat(container);
+    lv_obj_update_layout(container);
     lv_obj_scroll_to_view(newest, LV_ANIM_ON);
     history.scrollY = INT32_MAX;
     updatingChat = false;
@@ -9217,6 +9258,18 @@ void TFTView_320x240::nodeLongPressed(NodeId id)
     if (nodeIsMessagable(id)) {
         showMessages(id);
     }
+}
+
+void TFTView_320x240::nodeDeleteRequested(NodeId id)
+{
+    if (!id || id == ownNode || !nodeStore.find(id)) {
+        return;
+    }
+    if (currentNode == id) {
+        selectNode(0);
+    }
+    removeNode(id);
+    syncNodeListPresentation(true);
 }
 
 void TFTView_320x240::nodeFocusBoundary(bool forward)

@@ -372,7 +372,9 @@ static bool pagerMoveFocus(lv_group_t *group, int16_t diff)
 class PagerRotaryInputDriver final : public InputDriver
 {
   public:
-    PagerRotaryInputDriver() : rotary(INPUTDRIVER_ROTARY_UP, INPUTDRIVER_ROTARY_DOWN, INPUTDRIVER_ROTARY_BTN)
+    PagerRotaryInputDriver(DisplayDriver *display)
+        : displayDriver(display),
+          rotary(INPUTDRIVER_ROTARY_UP, INPUTDRIVER_ROTARY_DOWN, INPUTDRIVER_ROTARY_BTN)
     {
         rotaryInstance = &rotary;
     }
@@ -382,6 +384,7 @@ class PagerRotaryInputDriver final : public InputDriver
         encoder = lv_indev_create();
         lv_indev_set_type(encoder, LV_INDEV_TYPE_ENCODER);
         lv_indev_set_read_cb(encoder, encoder_read);
+        lv_indev_set_user_data(encoder, this);
         if (!inputGroup) {
             inputGroup = lv_group_create();
             lv_group_set_default(inputGroup);
@@ -413,6 +416,9 @@ class PagerRotaryInputDriver final : public InputDriver
     static void encoder_read(lv_indev_t *indev, lv_indev_data_t *data)
     {
         const bool buttonPressed = rotaryInstance && rotaryInstance->readButton() == RotaryEncoder::BUTTON_PRESSED;
+        const bool blankScreen = lv_screen_active() == objects.blank_screen;
+        if (blankScreen && buttonPressed)
+            suppressEncoderClick = true;
         lv_group_t *group = indev ? lv_indev_get_group(indev) : nullptr;
         if (buttonPressed && !suppressEncoderClick && pagerFunctionModifierActive) {
             pagerClearFunctionModifier();
@@ -435,15 +441,25 @@ class PagerRotaryInputDriver final : public InputDriver
         const int16_t diff = encoderDiff;
         encoderDiff = 0;
         portEXIT_CRITICAL(&rotaryLock);
+        if (blankScreen && (diff || buttonPressed)) {
+            auto *driver = static_cast<PagerRotaryInputDriver *>(lv_indev_get_user_data(indev));
+            if (driver && driver->displayDriver)
+                driver->displayDriver->forceWakeup();
+        }
         if (diff || buttonPressed)
             lv_display_trigger_activity(lv_indev_get_display(indev));
         data->key = suppressEncoderClick ? 0 : LV_KEY_ENTER;
-        data->enc_diff = pagerMoveFocus(group, diff) ? 0 : diff;
+        lv_obj_t *focusTarget = group ? lv_group_get_focused(group) : nullptr;
+        const bool editingSlider = group && lv_group_get_editing(group) && focusTarget &&
+                                   lv_obj_check_type(focusTarget, &lv_slider_class);
+        const int16_t adjustedDiff = diff == INT16_MIN ? INT16_MAX : -diff;
+        data->enc_diff = pagerMoveFocus(group, diff) ? 0 : (editingSlider ? adjustedDiff : diff);
         data->state = buttonPressed && !suppressEncoderClick ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
         if (!buttonPressed)
             suppressEncoderClick = false;
     }
 
+    DisplayDriver *displayDriver;
     RotaryEncoder rotary;
     inline static RotaryEncoder *rotaryInstance = nullptr;
     inline static int16_t encoderDiff = 0;
@@ -481,7 +497,7 @@ DeviceGUI::DeviceGUI(const DisplayDriverConfig *cfg, DisplayDriver *driver) : di
 #endif
 
 #if defined(INPUTDRIVER_ROTARY_TYPE)
-    pagerRotaryDriver = new PagerRotaryInputDriver;
+    pagerRotaryDriver = new PagerRotaryInputDriver(displaydriver);
 #endif
 
     if (!inputdriver)
