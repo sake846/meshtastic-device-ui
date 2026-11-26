@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -48,7 +49,14 @@ bool withinDuplicateWindow(uint32_t first, uint32_t second)
     return delta <= duplicateMessageWindowSeconds;
 }
 
-bool isQzssChatMessage(const uint8_t *text, size_t size)
+bool isCurrentQzssChatMessage(const uint8_t *text, size_t size)
+{
+    const std::string_view message(reinterpret_cast<const char *>(text), size);
+    return (message.starts_with("みちびきDCR") || message.starts_with("みちびきDCX")) &&
+           message.find('\n') != std::string_view::npos;
+}
+
+bool isLegacyQzssChatMessage(const uint8_t *text, size_t size)
 {
     static constexpr const char *prefixes[] = {"みちびき災危通報", "みちびきDCX", "（続き）/"};
     for (const char *prefix : prefixes) {
@@ -1120,9 +1128,11 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
         }
         auto message = std::make_unique<LogMessageEnv>(p.from, p.to, p.channel, receivedAt, LogMessage::eDefault, false,
                                                        p.decoded.payload.size, p.decoded.payload.bytes);
-        if (!isQzssChatMessage(p.decoded.payload.bytes, p.decoded.payload.size)) {
+        const bool currentQzss = isCurrentQzssChatMessage(p.decoded.payload.bytes, p.decoded.payload.size);
+        if (currentQzss || !isLegacyQzssChatMessage(p.decoded.payload.bytes, p.decoded.payload.size)) {
             flushPendingQzssMessages(false);
-            if (isRecentDuplicate(*message, receivedAt))
+            // Two different QZSS alerts can have an identical continuation.
+            if (!currentQzss && isRecentDuplicate(*message, receivedAt))
                 break;
             std::memcpy(messageText, p.decoded.payload.bytes, messageLength);
             view->newMessage(p.from, p.to, p.channel, messageText, receivedAt);
