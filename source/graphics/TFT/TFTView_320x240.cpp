@@ -936,14 +936,15 @@ void TFTView_320x240::init_screens(void)
     ui_init();
     apply_hotfix();
     lv_obj_remove_flag(objects.basic_settings_timezone_button, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_size(objects.settings_timezone, 220, 120);
-    lv_obj_set_pos(objects.settings_timezone, LV_PCT(3), LV_PCT(25));
+    lv_obj_set_size(objects.settings_timezone, 220, 180);
+    lv_obj_set_pos(objects.settings_timezone, LV_PCT(3), LV_PCT(10));
     lv_label_set_text(lv_obj_get_child(objects.settings_timezone, 0), _("Timezone"));
     lv_obj_add_flag(lv_obj_get_child(objects.settings_timezone, 2), LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(objects.settings_tzcity, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_pos(objects.settings_tzzone, 5, 30);
     lv_obj_set_width(objects.settings_tzzone, 200);
     lv_dropdown_set_options_static(objects.settings_tzzone, pagerTimezoneLabels);
+    lv_obj_set_style_max_height(lv_dropdown_get_list(objects.settings_tzzone), 64, LV_PART_MAIN);
     pagerUpdateTimezoneLabel(db.config.has_device ? db.config.device.tzdef : "");
     const uint32_t screenWidth = lv_display_get_horizontal_resolution(displaydriver->getDisplay());
     const uint32_t screenHeight = lv_display_get_vertical_resolution(displaydriver->getDisplay());
