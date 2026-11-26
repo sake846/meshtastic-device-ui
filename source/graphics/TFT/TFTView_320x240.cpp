@@ -1977,22 +1977,22 @@ void TFTView_320x240::ui_events_init(void)
     lv_obj_add_event_cb(objects.alert_panel, this->ui_event_AlertButton, LV_EVENT_CLICKED, NULL);
 
     // keyboard
+    lv_obj_t *keyboardButtons[] = {objects.keyboard_button_0, objects.keyboard_button_1,  objects.keyboard_button_2,
+                                   objects.keyboard_button_3, objects.keyboard_button_4,  objects.keyboard_button_5,
+                                   objects.keyboard_button_6, objects.keyboard_button_7,  objects.keyboard_button_8,
+                                   objects.keyboard_button_9, objects.keyboard_button_10, objects.keyboard_button_11,
+                                   objects.keyboard_button_12};
+    for (uintptr_t i = 0; i < sizeof(keyboardButtons) / sizeof(keyboardButtons[0]); ++i) {
+#if defined(MESHTASTIC_DEVICE_UI_DISABLE_SOFTWARE_KEYBOARD)
+        lv_obj_add_flag(keyboardButtons[i], LV_OBJ_FLAG_HIDDEN);
+        lv_group_remove_obj(keyboardButtons[i]);
+#else
+        lv_obj_add_event_cb(keyboardButtons[i], ui_event_KeyboardButton, LV_EVENT_CLICKED, reinterpret_cast<void *>(i));
+#endif
+    }
     lv_obj_add_event_cb(objects.keyboard, ui_event_Keyboard, LV_EVENT_CLICKED, this);
     lv_obj_add_event_cb(objects.keyboard, kbdRememberSelection, (lv_event_code_t)(LV_EVENT_KEY | LV_EVENT_PREPROCESS), NULL);
     lv_obj_add_event_cb(objects.keyboard, ui_event_Keyboard, LV_EVENT_KEY, this);
-    lv_obj_add_event_cb(objects.keyboard_button_0, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)0);
-    lv_obj_add_event_cb(objects.keyboard_button_1, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)1);
-    lv_obj_add_event_cb(objects.keyboard_button_2, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)2);
-    lv_obj_add_event_cb(objects.keyboard_button_3, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)3);
-    lv_obj_add_event_cb(objects.keyboard_button_4, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)4);
-    lv_obj_add_event_cb(objects.keyboard_button_5, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)5);
-    lv_obj_add_event_cb(objects.keyboard_button_6, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)6);
-    lv_obj_add_event_cb(objects.keyboard_button_7, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)7);
-    lv_obj_add_event_cb(objects.keyboard_button_8, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)8);
-    lv_obj_add_event_cb(objects.keyboard_button_9, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)9);
-    lv_obj_add_event_cb(objects.keyboard_button_10, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)10);
-    lv_obj_add_event_cb(objects.keyboard_button_11, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)11);
-    lv_obj_add_event_cb(objects.keyboard_button_12, ui_event_KeyboardButton, LV_EVENT_CLICKED, (void *)12);
 
     // message text area
     // Remove the LV_EVENT_ALL registration and replace it with these:
