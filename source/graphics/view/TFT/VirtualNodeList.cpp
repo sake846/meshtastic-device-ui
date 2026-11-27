@@ -164,9 +164,70 @@ void moveGroupButtonToTail(lv_group_t *group, lv_obj_t *button)
     }
 }
 
+#if defined(HAS_QZSS_DCR)
+constexpr const char *qzssSatelliteIconRows[24] = {
+    "           ##           ",
+    "         ##  ##         ",
+    "        ##    ##        ",
+    "       ##      ##       ",
+    "        ##    ##        ",
+    "         ##  ##         ",
+    "           ##           ",
+    "           ##           ",
+    "           ##           ",
+    "  #####  ######  #####  ",
+    "  ## #####    ##### ##  ",
+    "  ## ############## ##  ",
+    "  ## ############## ##  ",
+    "  ## #####    ##### ##  ",
+    "  #####  ######  #####  ",
+    "          ####          ",
+    "           ##           ",
+    "           ##           ",
+    "                        ",
+    "                        ",
+    "                        ",
+    "                        ",
+    "                        ",
+    "                        ",
+};
+
+constexpr auto qzssSatelliteIconPixels = [] {
+    std::array<uint8_t, 24 * 24> pixels{};
+    for (size_t y = 0; y < 24; ++y) {
+        for (size_t x = 0; x < 24; ++x) {
+            pixels[y * 24 + x] = qzssSatelliteIconRows[y][x] == '#' ? 0xff : 0;
+        }
+    }
+    return pixels;
+}();
+
+const lv_image_dsc_t img_qzss_satellite_image = {
+    .header = {
+        .magic = LV_IMAGE_HEADER_MAGIC,
+        .cf = LV_COLOR_FORMAT_A8,
+        .flags = 0,
+        .w = 24,
+        .h = 24,
+        .stride = 24,
+        .reserved_2 = 0,
+    },
+    .data_size = sizeof(qzssSatelliteIconPixels),
+    .data = qzssSatelliteIconPixels.data(),
+    .reserved = nullptr,
+};
+#endif
+
 void setRoleImage(const NodeRecord &record, lv_obj_t *img)
 {
     const void *source = &img_node_client_image;
+#if defined(HAS_QZSS_DCR)
+    const uint32_t nodeNum = static_cast<uint32_t>(record.id);
+    if (nodeNum > QzssDcr::MICHIBIKI_NODE_NUM_BASE &&
+        nodeNum <= QzssDcr::MICHIBIKI_NODE_NUM_BASE + QzssDcr::MAX_QZSS_SATELLITES) {
+        source = &img_qzss_satellite_image;
+    } else
+#endif
     if (record.unmessagable) {
         source = &img_unmessagable_image;
     } else {
