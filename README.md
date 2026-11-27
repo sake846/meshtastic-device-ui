@@ -1,282 +1,91 @@
-#
+# Meshtastic Device UI
+
+Shared LVGL user interface library for Meshtastic radios and standalone display clients.
+
+[Meshtastic website](https://meshtastic.org/) · [Documentation](https://meshtastic.org/docs/) · [Firmware repository](https://github.com/meshtastic/firmware)
+
+## Overview
+
+device-ui is a C++20 UI library used by Meshtastic firmware and standalone clients. It provides reusable display, view, input, and navigation components for supported TFT devices, with Linux/Portduino support for host builds and applications.
+
+The library uses LVGL 9 and LovyanGFX. Its views cover common Meshtastic screens such as messages, nodes, channels, telemetry, maps, and device settings. It also includes localization, persistent storage, and serial and TCP client interfaces.
 
 <div align="center">
-
-<img alt="meshtastic" src="https://avatars.githubusercontent.com/u/61627050?s=200&v=4" width="80" height="80">
-
-  <h1 align="center"> Meshtastic device-ui library</h1>
-  <p style="font-size:20px;" align="center">A versatile UI library for the <a href="https://meshtastic.org">meshtastic® project</a> </p>
+  <img src="docs/T-Deck.jpg" alt="Meshtastic running on a T-Deck" width="220">
+  <img src="docs/Tracker_L2.png" alt="Meshtastic running on a Tracker L2" width="220">
+  <img src="docs/Pi400-TFT.jpg" alt="Meshtastic running on a Raspberry Pi with a TFT" width="220">
 </div>
 
-<!--Project specific badges here-->
+## Platforms and devices
 
-<p align="center">
-<a href="">
-    <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/meshtastic/device-ui"></a>
-    <a href="https://github.com/meshtastic/device-ui/issues">
-    <img alt="GitHub issues" src="https://img.shields.io/github/issues/meshtastic/device-ui"></a>
-  <a href="https://opencollective.com/meshtastic">
-    <img alt="Open Collective backers" src="https://img.shields.io/opencollective/backers/meshtastic?label=support%20meshtastic">
-  </a>
-</p>
-<div style="text-align: center;">
+The library is designed for Arduino and FreeRTOS targets, including ESP32, nRF52, and RP2040 boards, as well as Linux/Portduino hosts.
 
-</div>
+Examples of integrated devices include the LILYGO T-Deck and T-Deck Plus, Seeed SenseCAP Indicator and Wio Tracker L2, Heltec V4 TFT, Elecrow ThinkNode M9 and CrowPanel Advance S3, unPhone, and PICOmputer S3. Standalone clients include devices such as the LilyGo T-HMI, WT32-SC01, and Replicator.
 
-## :wave: Introduction
+The exact device and panel support depends on the consuming firmware target and its display-driver configuration. See [Adding a TFT device](AGENTS.md#adding-a-tft-device) for the integration pattern.
 
-### Meshtastic device-ui library for TFT and OLED screens
+## Build and test
 
-This C++ library is intended to support the following scenarios with enhanced screen UI:
+A native CMake build is available for host-side development and tests. It uses C++20 and fetches several dependencies during configuration, so the first configure needs network access.
 
-- Integrated with meshtastic firmware for LoRa devices with TFT display (or potentially also OLED +PSRAM)
-- Stand-alone TFT+MCU devices such as WT32-SC01, CYD or T-HMI connected with meshtastic LoRa devices
-- Linux based devices with LoRa shield, e.g Raspberry Pi, Meshstick, Milk-V Duo/Mars with TFT display (hat or diy)
-- Native Linux X11 application with SimRadio e.g. for tests, GUI simulation & debugging (MQTT only application)
-
-<img src="docs/T-Deck.jpg" alt="scenario 1" width="205" height="150"><img src="docs/Tracker_L2.png" alt="scenario 2" width="220" height="150"><img src="docs/Pi400-TFT.jpg" alt="scenario 3" width="170" height="150"><img src="docs/X11.png" alt="scenario 4" width="230" height="150">
-
-<p align="center">
-Vectors and icons by <a href="https://www.svgrepo.com/" target="_blank">SVG Repo</a><br>
-Graphics using <a href="https://lvgl.io/" target="_blank">LVGL</a> library
-</p>
-
-## :iphone: Supported Devices
-
-### Firmware-integrated TFT devices
-
-- [x] LILYGO T-Deck / T-Deck Plus
-- [ ] LILYGO T-Lora Pager
-- [ ] LILYGO T-Watch S3
-- [ ] LILYGO T-Watch Ultra
-- [ ] LILYGO T-Display Pro S3
-- [x] Seeed SenseCAP Indicator
-- [x] Seeed Wio Tracker L2
-- [ ] Seeed Mesh Tracker X2
-- [x] Heltec V4 / V4 R8 TFT
-- [x] Elecrow ThinkNode M9
-- [ ] Elecrow ThinkNode MX
-- [x] Elecrow CrowPanel Advance S3 (2.4"/2.8"/3.5")
-- [ ] Elecrow CrowPanel Advance P4 (5.0"/7.0"/9.0"/10.1")
-- [ ] RAK WisMesh TAB V2
-- [x] unPhone
-- [x] PICOmputer S3
-
-### Stand-alone (via standalone-ui project)
-
-- [x] LilyGo T-HMI (320x240)
-- [x] Replicator 4848S040 (esp32 + nrf52 radio)
-- [x] Makerfabs (480x480)
-- [x] WT32-SC01 (Plus) (480x320)
-- [x] NM CYD C5 (320x240, 8MB PSRAM)
-- [x] JC4827W543C
-- [ ] Sunton/EstarDyn CYD (original - no longer working due to insufficient memory)
-
-### DIY / generic LGFX boards
-
-- [x] Generic ESP32 + ILI9341/ST7789/ILI9488 + XPT2046/FT6236 (see Mesh-Tab below)
-- [x] NodeMCU-32S + ILI9341/XPT2046
-- [x] Makerfabs 480x480
-- [x] ESP32 4848S040
-
-## Native input and navigation configuration
-
-Linux clients can select explicitly configured libinput devices and framebuffer interaction preferences through `DisplayDriverConfig`:
-
-```cpp
-DisplayDriverConfig displayConfig(DisplayDriverConfig::device_t::FB, width, height);
-displayConfig.input(DisplayDriverConfig::input_config_t{
-                    .keyboardDevice = keyboardPath,
-                    .pointerDevice = pointerPath,
-                    .keyboardNavigation = true,
-                    .cursorMode = DisplayDriverConfig::cursor_mode_t::AUTO})
-             .navigation(DisplayDriverConfig::navigation_config_t{
-                    .scrollbarMode = DisplayDriverConfig::scrollbar_mode_t::OFF});
+```sh
+cmake -S . -B build
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 ```
 
-`keyboardNavigation` defaults to `true`: arrows use the shared context-aware input policy for menu focus while preserving text,
-map, virtual-keyboard and open-dropdown controls. Set it to `false` to forward raw LVGL keyboard events.
-This option applies to the configured Linux keyboard, not to an X11 window's built-in keyboard input.
+When this repository is configured as the top-level CMake project, doctests are enabled by default. These tests run on the host and do not replace building or testing the relevant hardware target.
 
-`cursorMode` accepts `AUTO` (default), `ALWAYS`, or `NEVER`. For discovered relative-pointer devices, `AUTO` checks for a primary
-mouse button when LVGL provides `LV_EVDEV_HAS_FD_GETTER`. Older LVGL versions retain their relative-pointer cursor behavior;
-`NEVER` still disables the cursor. `ALWAYS` shows cursors for all relative pointers. Absolute touch devices do not receive a
-cursor. An explicitly configured libinput pointer shows a cursor unless `NEVER` is selected.
-The X11 window driver's own input devices and cursor are unchanged by these options.
-The capability accessor and permission-change hotplug retry are proposed in [LVGL #10990](https://github.com/lvgl/lvgl/pull/10990).
+## Firmware integration
 
-The main navigation panel scrolls when its buttons exceed the available space, using the actual button sizes, spacing and row/column layout.
-`scrollbarMode` accepts `AUTO` (default), `ON`, or `OFF`. Hiding the scrollbar keeps keyboard focus scrolling enabled.
+This repository provides the UI library; firmware build environments and board definitions live in the consuming firmware repository. Follow the [firmware build instructions](https://meshtastic.org/docs/development/firmware/build/) and select the appropriate device target there.
 
-## :pencil: TODOs
+Keep panel, touch, and pin configuration with the firmware target. The `VIEW_*` build definition selects a UI layout independently from the physical display resolution. For embedded targets, define `DISPLAY_SET_RESOLUTION` when the LVGL display should use the resolution reported by the display driver. Portduino reads panel settings from the host's YAML configuration.
 
-### General Architecture
+The native CMake build selects the `ui_320x240` generated view. CMake uses configure-time source globs, so rerun `cmake -S . -B build` after adding or removing source files.
 
-- [ ] Overall design (MVC approach)
-  - [x] DisplayDriver inheritance hierarchy
-  - [x] DisplayDriver factory
-  - [x] TFT Driver
-  - [ ] OLED Driver
-  - [ ] E-Ink Driver
-  - [x] View hierarchy
-  - [x] View factory
-  - [x] Controller design and interface implementation
-  - [x] Controller <-> model interface
-    - [x] Packet based thread safe interface
-    - [x] serial communication interface
-    - [x] protobuf encoding/decoding
-  - [x] Logging interface
-  - [x] Add lvgl compatible input driver interface
-  - [x] Add interface for persistency
-    - [x] Screen calibration data
-    - [x] Device settings (General)
-    - [x] Message storage
-    - [ ] Serial connection config
-- [x] Dynamic behavior
-  - [x] Startup config
-  - [x] Restart behavior
-  - [x] Display sleep
-  - [x] Heartbeat timer based on device input actions
-- [x] Localisation support
-  - [x] Bulgarian translation
-  - [x] Czech translation
-  - [x] Danish translation
-  - [x] Dutch translation
-  - [x] Finnish translation
-  - [x] French translation
-  - [x] German translation
-  - [x] Greek translation
-  - [x] Hungary translation
-  - [x] Italian translation
-  - [x] Netherlands translation
-  - [x] Norwegian translation
-  - [x] Polish translation
-  - [x] Portuguese translation
-  - [x] Russian translation
-  - [x] Slovenian translation
-  - [x] Spanish translation
-  - [x] Swedish translation
-  - [x] Turkish translation
-  - [x] Ukrainian translation
-- [x] Support dynamic OLED / Color(TFT) selection
-- [x] Add support for UI scaling and try eliminate fixed positioning (lvgl v9)
-- [x] Allow co-existence of generated files/views by different eez-studio projects
-- [x] Douple display buffer DMA (P4 only)
-- [ ] E-Ink support
-- [ ] RP2350 support
+## Linux input configuration
 
-### Meshtastic UI (general)
+Linux clients can select libinput devices and configure keyboard navigation, cursor behavior, and the main navigation panel's scrollbar through `DisplayDriverConfig`:
 
-- [x] Boot screen
-- [x] Customizable boot screen
-- [x] Home Screen
-  - [x] Messages info
-  - [x] Nodes info
-  - [x] Time and Date
-  - [x] LoRa info
-  - [x] GPS info
-  - [x] WiFi info
-  - [x] MQTT info
-  - [x] SD card info
-  - [x] Free memory info
-  - [x] Node fingerprint info
-- [ ] Nodes panel
-  - [x] Scroll display and sorting
-  - [x] Node details
-  - [x] Position data
-  - [x] Telemetry data display
-  - [ ] Repeater support (manual insertion)
-  - [x] LastHeard & time source handling improvements
-  - [ ] Remote Node configuration
-  - [x] Filter (offline, unknown, channel, public key, position, hops away, by name)
-  - [x] Highlight (position, telemetry, IAQ, by name)
-- [x] Group channel panel
-- [x] Chat panel
-  - [x] Scroll container and messages display
-  - [x] Virtual keyboard
-  - [x] Message acknowledgement
-  - [x] Delete chat
-- [x] Map
-  - [x] Tiles dynamic loading
-    - [x] SD card
-    - [x] WLAN
-  - [x] Pan & Zoom
-  - [x] Node locations
-  - [x] PMTiles support
-  - [ ] Location precision
-  - [ ] Geofence
-- [ ] Settings
-  - [ ] Basic Settings
-    - [x] User name
-    - [x] Region
-    - [x] Modem Preset
-    - [x] Channel
-    - [x] Device Role
-    - [x] Screen Timeout
-    - [x] Screen Calibration
-    - [x] Screen Lock
-    - [x] Brightness
-    - [x] Input Control
-    - [x] Message Alert / Ringtones
-    - [x] Language
-    - [ ] Timezone
-    - [x] Maps
-    - [ ] Audio
-    - [x] NodeDB / Factory Reset / Chat History
-    - [x] Reboot / BT Programming / Shutdown
-  - [ ] Advanced Settings
-    - [ ] General Settings
-    - [ ] Radio Settings
-    - [ ] Module Settings
-- [x] Status bar with battery symbol
-- [x] UI Keyboard navigation & control
-- [x] Latin supplemental fonts
-- [x] Cyrillic font glyphs
+```cpp
+DisplayDriverConfig displayConfig(
+    DisplayDriverConfig::device_t::FB, width, height);
 
-### OLED
+displayConfig
+    .input(DisplayDriverConfig::input_config_t{
+        .keyboardDevice = keyboardPath,
+        .pointerDevice = pointerPath,
+        .keyboardNavigation = true,
+        .cursorMode = DisplayDriverConfig::cursor_mode_t::AUTO,
+    })
+    .navigation(DisplayDriverConfig::navigation_config_t{
+        .scrollbarMode = DisplayDriverConfig::scrollbar_mode_t::AUTO,
+    });
+```
 
-- [ ] Provide demo for OLED 128x64 screen
-- [ ] Space and RAM requirements analysis
+- `keyboardNavigation` defaults to `true` and uses context-aware arrow-key navigation. Set it to `false` to forward raw LVGL keyboard events.
+- `cursorMode` accepts `AUTO`, `ALWAYS`, or `NEVER`. Absolute touch devices do not show a cursor; `NEVER` disables it.
+- `scrollbarMode` accepts `AUTO`, `ON`, or `OFF`. Keyboard focus can still scroll the panel when the scrollbar is hidden.
 
-### :penguin: Portduino (Raspberry / native linux)
+These options apply to the configured Linux input devices. An X11 window driver's own input and cursor behavior is unchanged.
 
-- [x] Project integration into firmware
-- [x] Display driver run-time configuration interface
-- [x] Add missing settingsMap entries for DisplayDriverConfig
-- [x] Integrate lvgl keyboard input driver
-- [x] Add support for several SPI devices
-- [ ] Add pwm brightness control
-- [ ] IP address display (eth/wlan)
-- [x] Target environment cleanup
-- [ ] SDL support
+## Architecture
 
-### :iphone: Stand-alone Device
+The library separates public interfaces, implementations, platform support, and generated views:
 
-- [x] Dedicated standalone-ui project
-- [ ] Sunton/EstarDyn CYD support (320x240) Note: no longer working due to insufficient memory
-- [x] NM CYD C5 (320x240) with 8MB PSRAM
-- [x] LilyGo T-HMI support (320x240)
-- [x] Replicator support (esp32 + nrf52 radio)
-  - [x] Display driver
-  - [x] 480x480 view -> scaled 320x240
-- [x] WT32-SC01 (Plus) support (480x320)
-  - [x] Display driver
-  - [x] 480x320 view -> scaled 320x240
-- [x] image size reduction
-- [ ] Fix/Workaround serial light sleep UART reading issue (-> firmware)
-- [ ] Heartbeat timer improvements
-- [x] Serial data send/receive
-  - [x] UART connection support
-  - [x] TCP/IP connection support
-  - [ ] WLAN connection support
-  - [ ] Bluetooth connection support
-- [ ] Serial Interface configuration UI screen
-- [ ] Allow serial connection initialisation at runtime
+- `include/` — public interfaces and headers
+- `source/` — UI, graphics, input, communication, storage, and utility implementations
+- `src/` — Meshtastic protobuf and constants integration
+- `portduino/` — Linux/Portduino support
+- `drivers/` — device-specific support
+- `generated/` — generated LVGL and EEZ Studio view sources
+- `tests/` — native test cases
 
-## Architecture Overview device-ui library (Class Diagram)
+[View the class diagram](docs/class-diagram.png).
 
-<img src="docs/class-diagram.png" alt="class diagram">
+Do not edit files under `generated/` by hand. Update the corresponding UI authoring source and regenerate the affected view. See [AGENTS.md](AGENTS.md) for repository build and device-integration details.
 
-## Stats
+## License
 
-![Alt](https://repobeats.axiom.co/api/embed/13969b386b951b28cd1eb19ec1bbcf364318ddf7.svg 'Repobeats analytics image')
+See [LICENSE](LICENSE) for the license terms.
