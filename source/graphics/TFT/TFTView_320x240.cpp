@@ -9740,6 +9740,13 @@ bool TFTView_320x240::hasKnownNodeForPacket(uint32_t nodeNum) const
 void TFTView_320x240::setNodeImage(uint32_t nodeNum, eRole role, bool unmessagable, lv_obj_t *img)
 {
     const void *source = &img_node_client_image;
+#if defined(HAS_QZSS_DCR)
+    if (nodeNum > QzssDcr::MICHIBIKI_NODE_NUM_BASE &&
+        nodeNum <= QzssDcr::MICHIBIKI_NODE_NUM_BASE + QzssDcr::MAX_QZSS_SATELLITES) {
+        NodeListRowPresentation::applyNodeImage(img, nodeNum, qzssSatelliteIcon(), false, true);
+        return;
+    }
+#endif
     if (unmessagable) {
         source = &img_unmessagable_image;
     } else {

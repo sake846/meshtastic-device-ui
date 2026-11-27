@@ -221,11 +221,13 @@ const lv_image_dsc_t img_qzss_satellite_image = {
 void setRoleImage(const NodeRecord &record, lv_obj_t *img)
 {
     const void *source = &img_node_client_image;
+    bool visualUnmessagable = record.unmessagable;
 #if defined(HAS_QZSS_DCR)
     const uint32_t nodeNum = static_cast<uint32_t>(record.id);
     if (nodeNum > QzssDcr::MICHIBIKI_NODE_NUM_BASE &&
         nodeNum <= QzssDcr::MICHIBIKI_NODE_NUM_BASE + QzssDcr::MAX_QZSS_SATELLITES) {
-        source = &img_qzss_satellite_image;
+        source = qzssSatelliteIcon();
+        visualUnmessagable = false;
     } else
 #endif
     if (record.unmessagable) {
@@ -257,9 +259,16 @@ void setRoleImage(const NodeRecord &record, lv_obj_t *img)
             break;
         }
     }
-    NodeListRowPresentation::applyNodeImage(img, record.id, source, record.unmessagable, true);
+    NodeListRowPresentation::applyNodeImage(img, record.id, source, visualUnmessagable, true);
 }
 } // namespace
+
+#if defined(HAS_QZSS_DCR)
+const lv_image_dsc_t *qzssSatelliteIcon()
+{
+    return &img_qzss_satellite_image;
+}
+#endif
 
 VirtualNodeList::VirtualNodeList(lv_obj_t *parent, NodeListActionSink &sink) : parentPanel(parent), actionSink(sink)
 {
