@@ -63,6 +63,15 @@ TDeckKeyboardInputDriver::TDeckKeyboardInputDriver(uint8_t address)
     registerI2CKeyboard(this, "T-Deck Keyboard", address);
 }
 
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+static lv_obj_t *tdeckJapaneseImeTarget = nullptr;
+
+void TDeckKeyboardInputDriver::setJapaneseImeTarget(lv_obj_t *textarea)
+{
+    tdeckJapaneseImeTarget = textarea;
+}
+#endif
+
 /******************************************************************
     LV_KEY_NEXT: Focus on the next object
     LV_KEY_PREV: Focus on the previous object
@@ -101,13 +110,21 @@ void TDeckKeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *indev, 
         if (keyValue != 0x00 && keyValue != 0xE0) {
             data->state = LV_INDEV_STATE_PRESSED;
             ILOG_DEBUG("key press value: %d", (int)keyValue);
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+            lv_group_t *group = lv_indev_get_group(indev);
+            lv_obj_t *focused = group ? lv_group_get_focused(group) : nullptr;
+#endif
 
             switch (keyValue) {
             case 0x0D:
                 keyValue = LV_KEY_ENTER;
                 break;
             case 0x04: // SHIFT-$
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_IME)
+                keyValue = focused == tdeckJapaneseImeTarget ? JapaneseIme::toggleKey : LV_KEY_CUSTOM_DIACRITIC;
+#else
                 keyValue = LV_KEY_CUSTOM_DIACRITIC;
+#endif
                 break;
             default:
                 break;

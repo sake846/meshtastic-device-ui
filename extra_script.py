@@ -162,7 +162,7 @@ if font_source:
     (build_dir / "device_ui_japanese_font.h").write_text("\n".join(header_lines) + "\n", encoding="utf-8")
     env.Append(CPPPATH=[str(build_dir)], CPPDEFINES=["MESHTASTIC_DEVICE_UI_JAPANESE_FONT"])
 
-    if "T_LORA_PAGER" in env.get("CPPDEFINES", []):
+    if any(name in env.get("CPPDEFINES", []) for name in ("T_LORA_PAGER", "T_DECK")):
         # https://github.com/skk-dev/dict/blob/0a164e6b990c5eb5b59eb7d8789f08865dc2f644/SKK-JISYO.S
         from json import dumps
 

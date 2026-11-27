@@ -1731,6 +1731,7 @@ void TFTView_320x240::apply_hotfix(void)
     lv_obj_set_floating(japaneseInputStatus, true);
     lv_obj_set_hidden(japaneseInputStatus, true);
     TLoraPagerKeyboardInputDriver::setJapaneseImeTarget(objects.message_input_area);
+    TDeckKeyboardInputDriver::setJapaneseImeTarget(objects.message_input_area);
 #endif
     lv_textarea_set_placeholder_text(objects.nodes_filter_name_area, _("!Enter Filter ..."));
     lv_textarea_set_placeholder_text(objects.nodes_hl_name_area, _("Enter Filter ..."));
