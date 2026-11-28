@@ -6947,8 +6947,6 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
     lv_group_add_obj(defaultPanelGroup, textLabel);
     lv_obj_update_layout(hiddenPanel);
     const int32_t maxBubbleWidth = lv_obj_get_content_width(hiddenPanel) * 80 / 100;
-    lv_obj_set_width(textLabel, LV_SIZE_CONTENT);
-    lv_obj_set_style_max_width(textLabel, maxBubbleWidth, LV_PART_MAIN);
     lv_obj_set_height(textLabel, LV_SIZE_CONTENT);
     lv_obj_set_y(textLabel, 0);
     lv_obj_set_align(textLabel, entry.sent ? LV_ALIGN_RIGHT_MID : LV_ALIGN_LEFT_MID);
@@ -6966,7 +6964,15 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
 #if defined(MESHTASTIC_DEVICE_UI_JAPANESE_FONT)
     lv_obj_set_style_text_font(textLabel, messageFont, LV_PART_MAIN | LV_STATE_DEFAULT);
 #endif
+    // The thicker focus border takes space from the padding so the text stays in place.
+    lv_obj_set_style_pad_all(textLabel, entry.sent ? 1 : 0, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
     lv_label_set_text(textLabel, buf);
+
+    const int32_t horizontalSpace =
+        lv_obj_get_style_space_left(textLabel, LV_PART_MAIN) + lv_obj_get_style_space_right(textLabel, LV_PART_MAIN);
+    // With LV_SIZE_CONTENT, LVGL measures wrapping before subtracting padding and borders.
+    if (lv_obj_get_self_width(textLabel) + horizontalSpace >= maxBubbleWidth)
+        lv_obj_set_width(textLabel, maxBubbleWidth);
 
     switch (entry.status) {
     case LogMessage::eHeard:
