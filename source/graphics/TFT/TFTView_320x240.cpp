@@ -6945,9 +6945,6 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
 
     lv_obj_t *textLabel = lv_label_create(hiddenPanel);
     lv_group_add_obj(defaultPanelGroup, textLabel);
-#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_FONT)
-    lv_obj_set_style_text_font(textLabel, messageFont, LV_PART_MAIN | LV_STATE_DEFAULT);
-#endif
     lv_obj_update_layout(hiddenPanel);
     const int32_t maxBubbleWidth = lv_obj_get_content_width(hiddenPanel) * 80 / 100;
     lv_obj_set_width(textLabel, LV_SIZE_CONTENT);
@@ -6958,7 +6955,6 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
     lv_obj_add_flag(textLabel, lv_obj_flag_t(LV_OBJ_FLAG_EVENT_BUBBLE | LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_CLICK_FOCUSABLE |
                                              LV_OBJ_FLAG_SCROLL_ON_FOCUS));
     lv_label_set_long_mode(textLabel, LV_LABEL_LONG_WRAP);
-    lv_label_set_text(textLabel, buf);
 
     if (entry.sent) {
         add_style_chat_message_style(textLabel);
@@ -6967,6 +6963,10 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
         lv_obj_add_event_cb(textLabel, ui_event_chatNodeButton, LV_EVENT_CLICKED,
                             reinterpret_cast<void *>(static_cast<uintptr_t>(entry.node)));
     }
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_FONT)
+    lv_obj_set_style_text_font(textLabel, messageFont, LV_PART_MAIN | LV_STATE_DEFAULT);
+#endif
+    lv_label_set_text(textLabel, buf);
 
     switch (entry.status) {
     case LogMessage::eHeard:
