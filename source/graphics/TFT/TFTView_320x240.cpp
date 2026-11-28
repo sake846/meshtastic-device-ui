@@ -6945,6 +6945,9 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
 
     lv_obj_t *textLabel = lv_label_create(hiddenPanel);
     lv_group_add_obj(defaultPanelGroup, textLabel);
+#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_FONT)
+    lv_obj_set_style_text_font(textLabel, messageFont, LV_PART_MAIN | LV_STATE_DEFAULT);
+#endif
     lv_obj_update_layout(hiddenPanel);
     const int32_t maxBubbleWidth = lv_obj_get_content_width(hiddenPanel) * 80 / 100;
     lv_obj_set_width(textLabel, LV_SIZE_CONTENT);
@@ -6965,9 +6968,6 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
                             reinterpret_cast<void *>(static_cast<uintptr_t>(entry.node)));
     }
 
-#if defined(MESHTASTIC_DEVICE_UI_JAPANESE_FONT)
-    lv_obj_set_style_text_font(textLabel, messageFont, LV_PART_MAIN | LV_STATE_DEFAULT);
-#endif
     switch (entry.status) {
     case LogMessage::eHeard:
         lv_obj_set_style_border_color(textLabel, colorYellow, LV_PART_MAIN);
