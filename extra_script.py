@@ -78,6 +78,34 @@ if font_source:
         elif glyph is not None and bitmap_rows is not None:
             bitmap_rows.append(line)
 
+    # Use half-width forms of the matching Japanese glyphs for printable ASCII.
+    ascii_sources = {0x20: 0x3000, 0x22: 0x201C, 0x27: 0x2019, 0x2D: 0x2010, 0x7E: 0x301C}
+    for codepoint in range(0x20, 0x7F):
+        source_codepoint = ascii_sources.get(codepoint, codepoint + 0xFEE0)
+        source = glyphs.get(source_codepoint)
+        if source is None:
+            continue
+        half_width = (source["width"] + 1) // 2
+        bitmap_stride = (half_width + 7) // 8
+        bitmap = bytearray(bitmap_stride * source["height"])
+        for y in range(source["height"]):
+            for x in range(half_width):
+                for source_x in (x * 2, x * 2 + 1):
+                    if (
+                        source_x < source["width"]
+                        and source["bitmap"][y * source["bitmap_stride"] + source_x // 8]
+                        & (0x80 >> (source_x % 8))
+                    ):
+                        bitmap[y * bitmap_stride + x // 8] |= 0x80 >> (x % 8)
+                        break
+        glyphs[codepoint] = dict(
+            source,
+            advance=max(1, (source["advance"] + 1) // 2),
+            width=half_width,
+            bitmap=bytes(bitmap),
+            bitmap_stride=bitmap_stride,
+        )
+
     selected = [glyphs[codepoint] for codepoint in sorted(glyphs)]
     if not selected:
         raise RuntimeError(f"No Japanese glyphs found in {font_path}")
