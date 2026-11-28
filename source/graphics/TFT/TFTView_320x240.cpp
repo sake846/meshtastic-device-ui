@@ -7368,19 +7368,14 @@ void TFTView_320x240::updatePosition(uint32_t nodeNum, int32_t lat, int32_t lon,
 {
     const NodePosition position{true, lat, lon, alt, sats, precision};
     const NodeMutation mutation = nodeStore.updatePosition(nodeNum, position);
-    int32_t shownAltitude = alt > -10000 && alt < 10000 ? alt : 0;
-    const bool metric = db.config.display.units == meshtastic_Config_DisplayConfig_DisplayUnits_METRIC;
-    const char *units = metric ? "m" : "ft";
-    if (!metric)
-        shownAltitude = int32_t(float(shownAltitude) * 3.28084);
 
     if (nodeNum == ownNode) {
         char buf[64];
         const int latTotal = static_cast<int>(round(lat * 1e-7 * 3600));
         const int lonTotal = static_cast<int>(round(lon * 1e-7 * 3600));
-        std::snprintf(buf, sizeof(buf), "%c%02i° %2i'%02i\" %c%02i° %2i'%02i\" %d%s", lat < 0 ? 'S' : 'N',
+        std::snprintf(buf, sizeof(buf), "%c%02i° %2i'%02i\" %c%02i° %2i'%02i\"", lat < 0 ? 'S' : 'N',
                       abs(latTotal / 3600), abs(latTotal % 3600) / 60, abs(latTotal % 60), lon < 0 ? 'W' : 'E',
-                      abs(lonTotal / 3600), abs(lonTotal % 3600) / 60, abs(lonTotal % 60), shownAltitude, units);
+                      abs(lonTotal / 3600), abs(lonTotal % 3600) / 60, abs(lonTotal % 60));
         lv_label_set_text(objects.home_location_label, buf);
         if (position.hasCoordinates()) {
             hasPosition = true;
@@ -9750,7 +9745,7 @@ void TFTView_320x240::setNodeImage(uint32_t nodeNum, eRole role, bool unmessagab
 #if defined(HAS_QZSS_DCR)
     if (nodeNum > QzssDcr::MICHIBIKI_NODE_NUM_BASE &&
         nodeNum <= QzssDcr::MICHIBIKI_NODE_NUM_BASE + QzssDcr::MAX_QZSS_SATELLITES) {
-        NodeListRowPresentation::applyNodeImage(img, nodeNum, qzssSatelliteIcon(), false, true);
+        NodeListRowPresentation::applyNodeImage(img, nodeNum, &img_top_lora_image, false, true);
         return;
     }
 #endif
