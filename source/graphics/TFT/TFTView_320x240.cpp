@@ -6946,7 +6946,7 @@ lv_obj_t *TFTView_320x240::createChatBubble(lv_obj_t *container, const ChatHisto
     lv_obj_t *textLabel = lv_label_create(hiddenPanel);
     lv_group_add_obj(defaultPanelGroup, textLabel);
     lv_obj_update_layout(hiddenPanel);
-    const int32_t maxBubbleWidth = lv_obj_get_content_width(hiddenPanel) * 90 / 100;
+    const int32_t maxBubbleWidth = lv_obj_get_content_width(hiddenPanel) * 80 / 100;
     lv_obj_set_width(textLabel, LV_SIZE_CONTENT);
     lv_obj_set_style_max_width(textLabel, maxBubbleWidth, LV_PART_MAIN);
     lv_obj_set_height(textLabel, LV_SIZE_CONTENT);
@@ -8679,7 +8679,7 @@ lv_obj_t *TFTView_320x240::newMessageContainer(uint32_t from, uint32_t to, uint8
     lv_obj_t *container = lv_obj_create(objects.messages_panel);
     lv_obj_remove_style_all(container);
     lv_obj_set_width(container, lv_pct(100));
-    lv_obj_set_height(container, lv_pct(84));
+    lv_obj_set_height(container, lv_pct(88));
     lv_obj_set_x(container, 0);
     lv_obj_set_y(container, 0);
     lv_obj_set_align(container, LV_ALIGN_TOP_MID);
