@@ -9,8 +9,6 @@
 #include <limits>
 #include <vector>
 
-const lv_image_dsc_t *qzssSatelliteIcon();
-
 class NodeListActionSink
 {
   public:
