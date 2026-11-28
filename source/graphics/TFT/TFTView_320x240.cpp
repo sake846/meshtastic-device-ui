@@ -107,7 +107,7 @@ static void muiRefreshQzssStatus()
     if (!muiM10QzssLabel)
         return;
 
-    char status[96] = "#808080 M10:NONE QZSS:-- DCR:--#";
+    char status[96] = "#808080 M10:NONE QZSS:-- --#";
     if (QzssDcr::isUbloxM10Detected()) {
         const bool enabled = QzssDcr::isEnabled();
         QzssDcr::SatelliteStatus satellites[QzssDcr::MAX_QZSS_SATELLITES] = {};
@@ -117,7 +117,7 @@ static void muiRefreshQzssStatus()
         const char *qzssColor = "808080";
         const char *dcrColor = "808080";
         char qzssStatus[16] = "QZSS:--";
-        char dcrStatus[32] = "DCR:--";
+        char dcrStatus[32] = "--";
         if (enabled) {
             if (!hasReport) {
                 qzssColor = "FFAB00";
@@ -134,14 +134,14 @@ static void muiRefreshQzssStatus()
             uint8_t ageSeconds = 0;
             if (QzssDcr::getCapturedSatellite(capturedSvId, &ageSeconds)) {
                 dcrColor = "00C853";
-                std::snprintf(dcrStatus, sizeof(dcrStatus), "DCR:RX Q%u %us", static_cast<unsigned>(capturedSvId),
+                std::snprintf(dcrStatus, sizeof(dcrStatus), "RX Q%u %us", static_cast<unsigned>(capturedSvId),
                               static_cast<unsigned>(ageSeconds));
             } else {
                 dcrColor = "FFAB00";
-                std::snprintf(dcrStatus, sizeof(dcrStatus), "DCR:WAIT");
+                std::snprintf(dcrStatus, sizeof(dcrStatus), "WAIT");
             }
         } else {
-            std::snprintf(dcrStatus, sizeof(dcrStatus), "DCR:OFF");
+            std::snprintf(dcrStatus, sizeof(dcrStatus), "OFF");
         }
 
         std::snprintf(status, sizeof(status), "#00C853 M10:OK# #%s %s# #%s %s#", qzssColor, qzssStatus, dcrColor, dcrStatus);
