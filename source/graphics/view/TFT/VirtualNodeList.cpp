@@ -168,12 +168,14 @@ void setRoleImage(const NodeRecord &record, lv_obj_t *img)
 {
     const void *source = &img_node_client_image;
     bool visualUnmessagable = record.unmessagable;
+    bool qzssNode = false;
 #if defined(HAS_QZSS_DCR)
     const uint32_t nodeNum = static_cast<uint32_t>(record.id);
     if (nodeNum > QzssDcr::MICHIBIKI_NODE_NUM_BASE &&
         nodeNum <= QzssDcr::MICHIBIKI_NODE_NUM_BASE + QzssDcr::MAX_QZSS_SATELLITES) {
-        source = &img_top_lora_image;
+        source = &img_home_location_button_image;
         visualUnmessagable = false;
+        qzssNode = true;
     } else
 #endif
     if (record.unmessagable) {
@@ -206,6 +208,10 @@ void setRoleImage(const NodeRecord &record, lv_obj_t *img)
         }
     }
     NodeListRowPresentation::applyNodeImage(img, record.id, source, visualUnmessagable, true);
+    if (qzssNode) {
+        lv_obj_set_style_image_recolor(img, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_image_recolor_opa(img, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
 }
 } // namespace
 

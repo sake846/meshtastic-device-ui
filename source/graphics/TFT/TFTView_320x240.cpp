@@ -9745,7 +9745,9 @@ void TFTView_320x240::setNodeImage(uint32_t nodeNum, eRole role, bool unmessagab
 #if defined(HAS_QZSS_DCR)
     if (nodeNum > QzssDcr::MICHIBIKI_NODE_NUM_BASE &&
         nodeNum <= QzssDcr::MICHIBIKI_NODE_NUM_BASE + QzssDcr::MAX_QZSS_SATELLITES) {
-        NodeListRowPresentation::applyNodeImage(img, nodeNum, &img_top_lora_image, false, true);
+        NodeListRowPresentation::applyNodeImage(img, nodeNum, &img_home_location_button_image, false, true);
+        lv_obj_set_style_image_recolor(img, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_image_recolor_opa(img, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
         return;
     }
 #endif
